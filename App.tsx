@@ -121,7 +121,7 @@ const App: React.FC = () => {
            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
            <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">Gestão de Culto</span>
         </div>
-        <h1 className="text-white font-black text-2xl tracking-tighter leading-tight uppercase">Santo Antônio II</h1>
+        <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
         <div className="mt-1 bg-white/10 self-start px-3 py-1 rounded-full flex items-center gap-2">
            <span className="material-icons text-amber-400 text-xs">analytics</span>
            <span className="text-white font-black text-[10px] uppercase">{history.length} Cultos Registrados</span>
