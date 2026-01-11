@@ -1,0 +1,5 @@
+{
+  "name": "Gestão de Culto",
+  "description": "Sistema de gestão de louvores para ICM Santo Antônio II com histórico, ranking e backup.",
+  "requestFramePermissions": []
+}
