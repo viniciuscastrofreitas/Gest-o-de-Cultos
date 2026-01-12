@@ -30,7 +30,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pendingSong, setPendingSong] = useState<{name: string, diff: number, lastDate: string} | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [showSuccessBox, setShowSuccessBox] = useState(false);
 
   const dayOfWeekNames = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
   const fullDayNames = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
@@ -50,13 +50,9 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
     setDraft(prev => ({ ...prev, roles: { ...prev.roles, [role]: name } }));
   };
 
-  const handleOpenFinalize = () => {
-    setShowFinalizeModal(true);
-  };
-
-  const handleConfirmAndSave = () => {
+  const handleSave = () => {
     onSave(draft);
-    setShowFinalizeModal(false);
+    setShowSuccessBox(true);
   };
 
   const checkAndAddSong = (songName: string) => {
@@ -128,7 +124,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
       <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
         <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-white">
           <div className="space-y-8">
-            {/* DATA E PERÍODO */}
             <div className="grid grid-cols-1 gap-6">
               <div className="flex flex-col items-center">
                 <Label>Data do Culto</Label>
@@ -156,7 +151,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               )}
             </div>
 
-            {/* 1. SEÇÃO DE LOUVORES (AGORA PRIMEIRO) */}
             <div className="space-y-4 pt-6 border-t border-slate-50">
               <Label>Adicionar Louvores</Label>
               <div className="flex gap-2">
@@ -210,7 +204,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               </div>
             </div>
 
-            {/* 2. ESCALA DE OBREIROS */}
             <div className="space-y-5 pt-6 border-t border-slate-50">
               <div className="flex flex-col">
                 <Label>Portão</Label>
@@ -277,62 +270,46 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
             </div>
 
             <button 
-              onClick={handleOpenFinalize} 
+              onClick={handleSave} 
               disabled={draft.songs.length === 0} 
               className={`w-full py-5 rounded-2xl font-black text-base tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${draft.songs.length > 0 ? 'bg-[#1a1c3d] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
             >
               <span className="material-icons">save</span>
-              {editingId ? 'ATUALIZAR' : 'CONFIRMAR'}
+              {editingId ? 'ATUALIZAR REGISTRO' : 'FINALIZAR REGISTRO'}
             </button>
+            
+            {editingId && (
+              <button 
+                onClick={onCancelEdit}
+                className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-rose-500 transition-colors"
+              >
+                CANCELAR EDIÇÃO
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* MODAL DE FINALIZAÇÃO - Movido para fora do container com transform/animação para corrigir posicionamento */}
-      {showFinalizeModal && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/90 backdrop-blur-md flex items-center justify-center z-[2000] p-6 animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] p-10 md:p-14 w-full max-w-sm shadow-2xl animate-scaleUp text-center flex flex-col items-center">
-            
-            {/* Ícone no topo */}
-            <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-10">
-              <span className="material-icons text-indigo-500 text-4xl">checklist</span>
+      {/* CAIXA DE SUCESSO - "CULTO REGISTRADO" */}
+      {showSuccessBox && (
+        <div className="fixed inset-0 bg-[#1a1c3d]/90 flex items-center justify-center z-[3000] p-6 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white rounded-[3.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-scaleUp border border-white p-10 text-center">
+            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
+              <span className="material-icons text-5xl">check_circle</span>
             </div>
-
-            <h3 className="text-2xl font-black text-[#1a1c3d] mb-3 tracking-tighter">Finalizar Registro?</h3>
-            <p className="text-slate-400 font-medium mb-10 leading-relaxed text-sm">
-              Confirme a data para salvar este culto:
-            </p>
-
-            {/* Input de Data estilizado conforme imagem */}
-            <div className="w-full mb-10">
-              <div className="bg-slate-50 border border-slate-100 rounded-[1.5rem] px-8 py-5 flex items-center justify-between shadow-sm">
-                <span className="font-black text-[#1a1c3d] text-lg">
-                  {new Date(draft.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                </span>
-                <span className="material-icons text-indigo-200">expand_more</span>
-              </div>
-            </div>
-
-            <div className="w-full flex flex-col gap-6">
-              <button 
-                onClick={handleConfirmAndSave} 
-                className="w-full py-6 bg-[#4f46e5] text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-200 active:scale-95 transition-all text-sm uppercase tracking-widest"
-              >
-                CONFIRMAR E SALVAR
-              </button>
-              
-              <button 
-                onClick={() => setShowFinalizeModal(false)} 
-                className="text-slate-400 font-black uppercase text-[11px] tracking-widest hover:text-[#1a1c3d] transition-colors"
-              >
-                VOLTAR
-              </button>
-            </div>
+            <h3 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter mb-2">Culto Registrado!</h3>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-8">Informações salvas com sucesso</p>
+            <button 
+              onClick={() => setShowSuccessBox(false)} 
+              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-sm tracking-widest active:scale-95 shadow-xl"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
 
-      {/* MODAL RECORRENCIA - Movido para fora do container para consistência de posicionamento */}
+      {/* MODAL RECORRENCIA HINO */}
       {pendingSong && (
         <div className="fixed inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl flex items-center justify-center z-[2000] p-6 animate-fadeIn">
           <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">

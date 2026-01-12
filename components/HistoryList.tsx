@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
 
@@ -33,43 +34,55 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
     return groups;
   }, [history, searchTerm]);
 
-  const shareIndividual = (record: ServiceRecord) => {
-    const d = new Date(record.date + 'T12:00:00');
+  // Função centralizada para formatar a mensagem de texto do WhatsApp
+  const formatServiceMessage = (r: ServiceRecord, includeSongs = true) => {
+    const d = new Date(r.date + 'T12:00:00');
     const day = d.getDay();
     const dateFormatted = d.toLocaleDateString('pt-BR');
+    const isSatellite = r.roles.word === 'TRANSMISSÃO';
     
-    let msg = `*Relatório ICM Santo Antônio II - ${dateFormatted}*\n\n`;
-    msg += `*Culto:* ${record.description}\n\n`;
-    msg += `*Escala:*\n`;
-    msg += `Portão: ${record.roles.gate || '-'}\n`;
+    let msg = `*DATA: ${dateFormatted}* (${r.description})\n`;
+    msg += `> Portão: ${r.roles.gate || '-'}\n`;
     
     if (day !== 3) {
-      msg += `Louvor: ${record.roles.praise || '-'}\n`;
-      if (day !== 1) msg += `Palavra: ${record.roles.word || '-'}\n`;
-      if (record.roles.word !== 'TRANSMISSÃO') msg += `Texto Bíblico: ${record.roles.scripture || '-'}\n`;
-      else msg += `📡 Culto via Satélite\n`;
+      msg += `> Louvor: ${r.roles.praise || '-'}\n`;
+      if (day !== 1) msg += `> Palavra: ${r.roles.word || '-'}\n`;
+      if (!isSatellite && r.roles.scripture) msg += `> Texto: ${r.roles.scripture}\n`;
+      else if (isSatellite) msg += `*Satélite: Transmissão*\n`;
     } else {
-      msg += `🌸 Culto Senhoras\n`;
+      msg += `*Culto das Senhoras*\n`;
     }
-    
-    msg += `\n*Louvores:* \n`;
-    record.songs.forEach((s, i) => msg += `${i + 1}. ${s}\n`);
+
+    if (includeSongs && r.songs.length > 0) {
+      msg += `*Louvores:* \n`;
+      r.songs.forEach((s, i) => msg += ` - ${s}\n`);
+    }
+    return msg;
+  };
+
+  const shareIndividual = (record: ServiceRecord) => {
+    let msg = `*RELATÓRIO DE CULTO*\n*ICM SANTO ANTÔNIO II*\n\n`;
+    msg += formatServiceMessage(record, true);
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const shareMonth = (monthKey: string) => {
     const records = (groupedHistory as Record<string, ServiceRecord[]>)[monthKey];
-    let msg = `*RESUMO ICM SANTO ANTÔNIO II - ${monthKey}*\n\n`;
-    records.forEach(r => {
-      msg += `📅 ${new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')} - ${r.description}\n`;
+    let msg = `*RESUMO MENSAL - ${monthKey}*\n*ICM SANTO ANTÔNIO II*\n\n`;
+    // Ordena do mais antigo para o mais novo no relatório mensal
+    [...records].sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
+      msg += formatServiceMessage(r, true);
+      msg += `_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const shareAll = () => {
-    let msg = `*HISTÓRICO COMPLETO ICM SANTO ANTÔNIO II*\n\n`;
-    history.slice(0, 30).forEach(r => {
-      msg += `📅 ${new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')} | ${r.description}\n`;
+    let msg = `*HISTÓRICO DE CULTOS*\n*ICM SANTO ANTÔNIO II*\n\n`;
+    // Pega os últimos 10 registros para evitar que a mensagem fique excessivamente longa
+    history.slice(0, 10).forEach(r => {
+      msg += formatServiceMessage(r, true);
+      msg += `_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -146,8 +159,8 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
                       <div className="p-8 space-y-6">
                         {(isLadiesDay || isSatellite) && (
                           <div className="flex gap-2">
-                             {isLadiesDay && <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black px-3 py-1.5 rounded-full border border-indigo-100 uppercase tracking-widest flex items-center gap-1">🌸 Senhoras</span>}
-                             {isSatellite && <span className="bg-amber-50 text-amber-600 text-[8px] font-black px-3 py-1.5 rounded-full border border-amber-100 uppercase tracking-widest flex items-center gap-1">📡 Satélite</span>}
+                             {isLadiesDay && <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black px-3 py-1.5 rounded-full border border-indigo-100 uppercase tracking-widest flex items-center gap-1">Senhoras</span>}
+                             {isSatellite && <span className="bg-amber-50 text-amber-600 text-[8px] font-black px-3 py-1.5 rounded-full border border-amber-100 uppercase tracking-widest flex items-center gap-1">Satélite</span>}
                           </div>
                         )}
 
