@@ -22,7 +22,6 @@ interface Props {
   setDraft: React.Dispatch<React.SetStateAction<ServiceDraft>>;
   editingId: string | null;
   onCancelEdit: () => void;
-  totalRecords?: number;
 }
 
 const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegisterNewSong, draft, setDraft, editingId, onCancelEdit }) => {
@@ -124,6 +123,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
       <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
         <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-white">
           <div className="space-y-8">
+            {/* DATA E PERÍODO */}
             <div className="grid grid-cols-1 gap-6">
               <div className="flex flex-col items-center">
                 <Label>Data do Culto</Label>
@@ -151,8 +151,9 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               )}
             </div>
 
+            {/* LOUVORES */}
             <div className="space-y-4 pt-6 border-t border-slate-50">
-              <Label>Adicionar Louvores</Label>
+              <Label>Hinos</Label>
               <div className="flex gap-2">
                 <input 
                   type="text" 
@@ -179,7 +180,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hinos Selecionados</span>
                   {draft.songs.length > 0 && (
                     <button onClick={shareDraftPraise} className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100 hover:bg-emerald-100 transition-colors">
-                      <span className="material-icons text-xs">share</span> COMPARTILHAR LOUVORES
+                      <span className="material-icons text-xs">share</span> COMPARTILHAR
                     </button>
                   )}
                 </div>
@@ -204,6 +205,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               </div>
             </div>
 
+            {/* ESCALA */}
             <div className="space-y-5 pt-6 border-t border-slate-50">
               <div className="flex flex-col">
                 <Label>Portão</Label>
@@ -222,7 +224,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               {dateInfo.isWednesday && (
                 <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-100 flex items-center justify-center gap-3 text-indigo-700 animate-scaleUp">
                   <span className="text-lg">🌸</span>
-                  <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Culto dirigido pelo Grupo de Senhoras</span>
+                  <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Culto do Grupo de Senhoras</span>
                 </div>
               )}
 
@@ -254,7 +256,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                     {draft.roles.word === 'TRANSMISSÃO' ? (
                       <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-scaleUp">
                         <span className="text-lg">📡</span>
-                        <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Culto transmitido via satélite</span>
+                        <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Transmissão via satélite</span>
                       </div>
                     ) : (
                       <>
@@ -275,7 +277,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               className={`w-full py-5 rounded-2xl font-black text-base tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${draft.songs.length > 0 ? 'bg-[#1a1c3d] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
             >
               <span className="material-icons">save</span>
-              {editingId ? 'ATUALIZAR REGISTRO' : 'FINALIZAR REGISTRO'}
+              {editingId ? 'ATUALIZAR' : 'FINALIZAR'}
             </button>
             
             {editingId && (
@@ -283,42 +285,34 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                 onClick={onCancelEdit}
                 className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-rose-500 transition-colors"
               >
-                CANCELAR EDIÇÃO
+                CANCELAR
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* CAIXA DE SUCESSO - "CULTO REGISTRADO" */}
       {showSuccessBox && (
         <div className="fixed inset-0 bg-[#1a1c3d]/90 flex items-center justify-center z-[3000] p-6 backdrop-blur-md animate-fadeIn">
           <div className="bg-white rounded-[3.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-scaleUp border border-white p-10 text-center">
             <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
               <span className="material-icons text-5xl">check_circle</span>
             </div>
-            <h3 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter mb-2">Culto Registrado!</h3>
-            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-8">Informações salvas com sucesso</p>
-            <button 
-              onClick={() => setShowSuccessBox(false)} 
-              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-sm tracking-widest active:scale-95 shadow-xl"
-            >
-              OK
-            </button>
+            <h3 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter mb-2">Salvo!</h3>
+            <button onClick={() => setShowSuccessBox(false)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-sm tracking-widest active:scale-95 shadow-xl">OK</button>
           </div>
         </div>
       )}
 
-      {/* MODAL RECORRENCIA HINO */}
       {pendingSong && (
         <div className="fixed inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl flex items-center justify-center z-[2000] p-6 animate-fadeIn">
           <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">
             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-500"><span className="material-icons text-3xl">warning_amber</span></div>
             <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
-            <p className="text-slate-500 font-bold mb-8 leading-relaxed text-[11px]">Este hino foi cantado há <span className="text-amber-600 font-black">{pendingSong.diff} dias</span>. Prosseguir?</p>
+            <p className="text-slate-500 font-bold mb-8 leading-relaxed text-[11px]">Há <span className="text-amber-600 font-black">{pendingSong.diff} dias</span>. Prosseguir?</p>
             <div className="flex flex-col gap-3">
-              <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg active:scale-95">SIM, ADICIONAR</button>
-              <button onClick={() => setPendingSong(null)} className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest">Escolher outro</button>
+              <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg active:scale-95">SIM</button>
+              <button onClick={() => setPendingSong(null)} className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
             </div>
           </div>
         </div>

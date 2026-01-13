@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { INITIAL_PRAISE_LIST } from './constants';
-import { ServiceRecord, SongStats, ServiceDraft } from './types';
+import { ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './types';
 import ServiceForm from './components/ServiceForm';
 import HistoryList from './components/HistoryList';
 import RankingList from './components/RankingList';
@@ -8,12 +9,14 @@ import BackupRestore from './components/BackupRestore';
 import UnplayedList from './components/UnplayedList';
 import WorkerStats from './components/WorkerStats';
 import WorkerRanking from './components/WorkerRanking';
+import PraiseLearningList from './components/PraiseLearningList';
 import { initDB, saveData, loadData } from './db';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'workers' | 'suggestions' | 'praise-ranking' | 'unplayed' | 'settings'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'workers' | 'suggestions' | 'praise-ranking' | 'unplayed' | 'learning' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>([]);
   const [customSongs, setCustomSongs] = useState<string[]>([]);
+  const [learningList, setLearningList] = useState<PraiseLearningItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,7 +49,14 @@ const App: React.FC = () => {
         if (data) {
           if (data.history) setHistory(data.history);
           if (data.customSongs) setCustomSongs(data.customSongs);
-          if (data.draft) setDraft({ ...data.draft, date: getTodayDate(), roles: data.draft.roles || { ...emptyRoles } });
+          if (data.learningList) setLearningList(data.learningList);
+          if (data.draft) {
+            setDraft({ 
+              ...data.draft, 
+              date: getTodayDate(), 
+              roles: data.draft.roles || { ...emptyRoles }
+            });
+          }
         }
       } catch (e) {
         console.error("Erro no DB", e);
@@ -62,8 +72,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isLoading) saveData({ history, customSongs, draft });
-  }, [history, customSongs, draft, isLoading]);
+    if (!isLoading) saveData({ history, customSongs, draft, learningList });
+  }, [history, customSongs, draft, learningList, isLoading]);
 
   const fullSongList = useMemo(() => {
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
@@ -92,12 +102,18 @@ const App: React.FC = () => {
     } else {
       setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
     }
-    setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles } });
+    setDraft({ 
+      date: getTodayDate(), 
+      description: '', 
+      songs: [], 
+      roles: { ...emptyRoles }
+    });
   };
 
   const menuItems = [
     { id: 'new', icon: 'add_circle', label: 'Novo Culto' },
     { id: 'history', icon: 'history', label: 'Histórico' },
+    { id: 'learning', icon: 'school', label: 'Aprendizado' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Escala / Sugestão' },
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
@@ -124,7 +140,7 @@ const App: React.FC = () => {
         <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
         <div className="mt-1 bg-white/10 self-start px-3 py-1 rounded-full flex items-center gap-2">
            <span className="material-icons text-amber-400 text-xs">analytics</span>
-           <span className="text-white font-black text-[10px] uppercase">{history.length} Cultos Registrados</span>
+           <span className="text-white font-black text-[10px] uppercase">{history.length} Cultos</span>
         </div>
       </div>
     </div>
@@ -188,16 +204,17 @@ const App: React.FC = () => {
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 min-w-0">
-        {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-[92px] md:top-0 z-[190] shadow-lg">Você está operando offline. Os dados serão salvos localmente.</div>}
+        {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-[92px] md:top-0 z-[190] shadow-lg">Você está operando offline.</div>}
         
         <div className="p-4 md:p-16 animate-fadeIn max-w-6xl mx-auto">
-          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} totalRecords={history.length} />}
+          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} />}
+          {activeTab === 'learning' && <PraiseLearningList fullSongList={fullSongList} learningList={learningList} setLearningList={setLearningList} />}
           {activeTab === 'workers' && <WorkerRanking history={history} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
-          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} onRestore={(h, c) => { setHistory(h); setCustomSongs(c); }} />}
+          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} />}
         </div>
       </main>
     </div>

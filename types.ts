@@ -1,3 +1,4 @@
+
 export interface ServiceRoles {
   gate: string;      // Portão
   praise: string;    // Louvor
@@ -27,8 +28,17 @@ export interface SongStats {
   history: string[];
 }
 
+export type LearningStatus = 'not_started' | 'learning' | 'learned' | 'correcting';
+
+export interface PraiseLearningItem {
+  song: string;
+  status: LearningStatus;
+  updatedAt: string;
+}
+
 export interface AppData {
   history: ServiceRecord[];
   customSongs?: string[];
   draft?: ServiceDraft;
+  learningList?: PraiseLearningItem[];
 }

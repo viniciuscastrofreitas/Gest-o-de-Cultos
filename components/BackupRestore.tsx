@@ -1,21 +1,23 @@
+
 import React, { useRef } from 'react';
-import { ServiceRecord } from '../types';
+import { ServiceRecord, PraiseLearningItem } from '../types';
 
 interface Props {
   history: ServiceRecord[];
   customSongs: string[];
-  onRestore: (history: ServiceRecord[], customSongs: string[]) => void;
+  learningList: PraiseLearningItem[];
+  onRestore: (history: ServiceRecord[], customSongs: string[], learningList: PraiseLearningItem[]) => void;
 }
 
-const BackupRestore: React.FC<Props> = ({ history, customSongs, onRestore }) => {
+const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, onRestore }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const generateBackupData = () => {
-    return JSON.stringify({ history, customSongs }, null, 2);
+    return JSON.stringify({ history, customSongs, learningList }, null, 2);
   };
 
   const handleBackup = () => {
-    if (history.length === 0 && customSongs.length === 0) {
+    if (history.length === 0 && customSongs.length === 0 && learningList.length === 0) {
       alert("Não há dados para exportar.");
       return;
     }
@@ -39,7 +41,7 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, onRestore }) => 
         const json = JSON.parse(event.target?.result as string);
         if (json && Array.isArray(json.history)) {
           if (window.confirm("Isso substituirá seus dados atuais. Continuar?")) {
-            onRestore(json.history, json.customSongs || []);
+            onRestore(json.history, json.customSongs || [], json.learningList || []);
           }
         } else {
           alert("Arquivo inválido.");
@@ -90,8 +92,8 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, onRestore }) => 
             <span className="bg-indigo-50 px-4 py-1 rounded-full text-indigo-600 font-black text-xs border border-indigo-100">{history.length}</span>
           </div>
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-50">
-            <span className="text-sm font-bold text-slate-600">Hinos Customizados</span>
-            <span className="bg-indigo-50 px-4 py-1 rounded-full text-indigo-600 font-black text-xs border border-indigo-100">{customSongs.length}</span>
+            <span className="text-sm font-bold text-slate-600">Hinos Monitorados</span>
+            <span className="bg-emerald-50 px-4 py-1 rounded-full text-emerald-600 font-black text-xs border border-emerald-100">{learningList.length}</span>
           </div>
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-50">
             <span className="text-sm font-bold text-slate-600">Sincronização</span>
