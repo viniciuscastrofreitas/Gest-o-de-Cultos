@@ -103,7 +103,8 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   };
 
   const suggestions = useMemo(() => {
-    if (inputValue.length < 2) return [];
+    // Alterado de 2 para 1 para começar a buscar com um único caractere
+    if (inputValue.length < 1) return [];
     const lowerInput = inputValue.toLowerCase();
     return fullSongList
       .filter(s => s.toLowerCase().includes(lowerInput))

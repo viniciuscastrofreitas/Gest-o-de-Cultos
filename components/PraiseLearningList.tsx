@@ -70,7 +70,8 @@ const PraiseLearningList: React.FC<Props> = ({ fullSongList, learningList, setLe
   };
 
   const suggestions = useMemo(() => {
-    if (addInput.length < 2) return [];
+    // Alterado de 2 para 1 para começar a buscar com um único caractere
+    if (addInput.length < 1) return [];
     const lower = addInput.toLowerCase();
     const alreadyInList = new Set(learningList.map(i => i.song));
     return fullSongList
@@ -182,10 +183,10 @@ const PraiseLearningList: React.FC<Props> = ({ fullSongList, learningList, setLe
         
         <div className="flex justify-center md:justify-start gap-4 pb-2 px-1">
           <StatusButton status="all" active={filter === 'all'} onClick={() => setFilter('all')} count={stats.total} />
-          <StatusButton status="learning" active={filter === 'learning'} onClick={() => setFilter('learning'} count={stats.learning} />
-          <StatusButton status="correcting" active={filter === 'correcting'} onClick={() => setFilter('correcting'} count={stats.correcting} />
-          <StatusButton status="not_started" active={filter === 'not_started'} onClick={() => setFilter('not_started'} count={stats.notStarted} />
-          <StatusButton status="learned" active={filter === 'learned'} onClick={() => setFilter('learned'} count={stats.learned} />
+          <StatusButton status="learning" active={filter === 'learning'} onClick={() => setFilter('learning')} count={stats.learning} />
+          <StatusButton status="correcting" active={filter === 'correcting'} onClick={() => setFilter('correcting')} count={stats.correcting} />
+          <StatusButton status="not_started" active={filter === 'not_started'} onClick={() => setFilter('not_started')} count={stats.notStarted} />
+          <StatusButton status="learned" active={filter === 'learned'} onClick={() => setFilter('learned')} count={stats.learned} />
         </div>
       </div>
 
