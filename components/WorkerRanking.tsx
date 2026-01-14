@@ -59,7 +59,7 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
   return (
     <>
       <div className="space-y-8 animate-fadeIn pb-10 max-w-4xl mx-auto">
-        <div className="px-2">
+        <div className="px-2 pt-2 md:pt-0">
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">Atividades por Obreiro</h2>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Total acumulado de atos realizados</p>
         </div>
@@ -85,26 +85,34 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
         </div>
       </div>
 
-      {/* Slide-over Drawer para Histórico de Obreiro */}
+      {/* Slide-over Drawer para Histórico de Obreiro - Ajustado para mobile */}
       {modalData && (
         <div className="fixed inset-0 z-[6000] flex justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setModalData(null)} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slideInRight">
-            <div className="bg-[#1a1c3d] p-10 relative shrink-0">
+            {/* Cabeçalho do Drawer com padding extra no mobile (pt-24) */}
+            <div className="bg-[#1a1c3d] pt-24 pb-10 px-10 md:pt-12 md:pb-12 md:px-10 relative shrink-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="material-icons text-indigo-400 text-sm">history</span>
                 <span className="text-indigo-400 font-black text-[9px] uppercase tracking-[0.2em] block">HISTÓRICO DETALHADO</span>
               </div>
               <h3 className="text-white font-black text-2xl uppercase tracking-tighter leading-tight">{modalData.worker}</h3>
-              <div className="mt-3 flex gap-2">
-                <div className="bg-white/10 px-3 py-1.5 rounded-xl inline-flex items-center gap-2">
-                  <span className="text-white font-black text-[10px] uppercase tracking-widest">{modalData.role}</span>
+              
+              {/* Opção e quantidade - Movidos mais para baixo */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <div className="bg-white/10 px-3 py-1.5 rounded-xl inline-flex items-center gap-2 border border-white/5">
+                  <span className="text-white/80 font-black text-[10px] uppercase tracking-widest">{modalData.role}</span>
                 </div>
-                <div className="bg-amber-400 px-3 py-1.5 rounded-xl inline-flex items-center gap-2">
+                <div className="bg-amber-400 px-3 py-1.5 rounded-xl inline-flex items-center gap-2 shadow-lg">
                   <span className="text-[#1a1c3d] font-black text-[10px] uppercase tracking-widest">{modalData.events.length} VEZES</span>
                 </div>
               </div>
-              <button onClick={() => setModalData(null)} className="absolute top-8 right-8 w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white/40 active:scale-90 transition-transform">
+
+              {/* Botão fechar ajustado para não conflitar com menu superior */}
+              <button 
+                onClick={() => setModalData(null)} 
+                className="absolute top-20 md:top-8 right-8 w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white/40 active:scale-90 transition-transform hover:bg-white/20"
+              >
                 <span className="material-icons text-xl">close</span>
               </button>
             </div>
@@ -134,8 +142,8 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
               )}
             </div>
             
-            <div className="p-8 bg-slate-50 shrink-0">
-              <button onClick={() => setModalData(null)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all shadow-xl">FECHAR DETALHES</button>
+            <div className="p-8 bg-slate-50 shrink-0 border-t border-slate-100">
+              <button onClick={() => setModalData(null)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all shadow-xl">VOLTAR AO RANKING</button>
             </div>
           </div>
         </div>

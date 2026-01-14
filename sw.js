@@ -1,4 +1,5 @@
-const CACHE_NAME = 'icm-gestao-v6';
+
+const CACHE_NAME = 'icm-gestao-v7';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',

@@ -89,7 +89,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   const onDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
   };
 
   const onDragOver = (e: React.DragEvent, index: number) => {
@@ -120,9 +119,9 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   return (
     <>
-      {/* Modal de Sucesso - Restaurado conforme versão anterior */}
+      {/* Modal de Sucesso - CENTRALIZADO (Versão que você gosta) */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-[7000] flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
           <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
             <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
@@ -212,7 +211,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                       onDragStart={(e) => onDragStart(e, i)}
                       onDragOver={(e) => onDragOver(e, i)}
                       onDragEnd={() => setDraggedIndex(null)}
-                      className={`flex items-center justify-between p-3.5 bg-slate-50/50 rounded-xl border border-slate-100 cursor-move transition-all active:scale-95 hover:bg-white hover:shadow-md ${draggedIndex === i ? 'drag-ghost' : ''}`}
+                      className={`flex items-center justify-between p-3.5 bg-slate-50/50 rounded-xl border border-slate-100 cursor-move transition-all active:scale-95 hover:bg-white hover:shadow-md ${draggedIndex === i ? 'opacity-50' : ''}`}
                     >
                       <div className="flex items-center gap-3 overflow-hidden">
                         <span className="material-icons text-slate-300 text-sm">drag_indicator</span>
@@ -312,11 +311,11 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
         </div>
       </div>
 
-      {/* Bottom Sheet para Hino Recorrente (Continua como Bottom Sheet por ser seletor) */}
+      {/* Bottom Sheet para Hino Recorrente */}
       {pendingSong && (
-        <div className="fixed inset-0 z-[6000] flex flex-col justify-end">
+        <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setPendingSong(null)} />
-          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slideUp">
+          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-2xl animate-slideUp">
             <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
             <div className="flex flex-col items-center text-center">
               <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6 text-amber-500">
