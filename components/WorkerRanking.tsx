@@ -69,14 +69,12 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
             <div key={worker.name} className="bg-white rounded-[2.5rem] overflow-hidden shadow-xl border border-slate-50 group transition-all">
               <div className="bg-[#1a1c3d] px-8 py-6 flex justify-between items-center relative overflow-hidden">
                 <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/5 rounded-full blur-2xl"></div>
-                
                 <h3 className="text-white font-black text-xl tracking-tight uppercase relative z-10">{worker.name}</h3>
                 <div className="bg-[#ffcc00] text-[#1a1c3d] px-4 py-2 rounded-full font-black text-[10px] shadow-lg flex items-center gap-2 relative z-10">
                   <span className="material-icons text-[14px]">military_tech</span>
                   {worker.total} ATOS TOTAIS
                 </div>
               </div>
-              
               <div className="p-5 flex gap-3 bg-slate-50/30">
                 <StatBox label="Portão" count={worker.gate.length} icon="door_front" onClick={() => setModalData({ worker: worker.name, role: 'Portão', events: worker.gate })} />
                 <StatBox label="Louvor" count={worker.praise.length} icon="music_note" onClick={() => setModalData({ worker: worker.name, role: 'Louvor', events: worker.praise })} />
@@ -87,11 +85,12 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
         </div>
       </div>
 
+      {/* Slide-over Drawer para Histórico de Obreiro */}
       {modalData && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/90 flex items-center justify-center z-[3000] p-6 backdrop-blur-md animate-fadeIn" onClick={() => setModalData(null)}>
-          <div className="bg-white rounded-[3.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-scaleUp border border-white" onClick={e => e.stopPropagation()}>
-            
-            <div className="bg-[#1a1c3d] p-10 relative">
+        <div className="fixed inset-0 z-[6000] flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setModalData(null)} />
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slideInRight">
+            <div className="bg-[#1a1c3d] p-10 relative shrink-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="material-icons text-indigo-400 text-sm">history</span>
                 <span className="text-indigo-400 font-black text-[9px] uppercase tracking-[0.2em] block">HISTÓRICO DETALHADO</span>
@@ -105,44 +104,38 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
                   <span className="text-[#1a1c3d] font-black text-[10px] uppercase tracking-widest">{modalData.events.length} VEZES</span>
                 </div>
               </div>
-              
-              <button onClick={() => setModalData(null)} className="absolute top-8 right-8 w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white/40 active:scale-90 transition-transform">
+              <button onClick={() => setModalData(null)} className="absolute top-8 right-8 w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white/40 active:scale-90 transition-transform">
                 <span className="material-icons text-xl">close</span>
               </button>
             </div>
 
-            <div className="p-8 bg-white flex flex-col">
-              <div className="max-h-80 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-                {modalData.events.length === 0 ? (
-                  <div className="py-10 text-center">
-                    <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhum registro encontrado</p>
-                  </div>
-                ) : (
-                  modalData.events.map((ev, i) => (
-                    <div key={i} className="flex justify-between items-center p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-100 shadow-sm">
-                          <span className="text-[10px] font-black text-indigo-600">#{modalData.events.length - i}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-black text-[#1a1c3d] text-base leading-none mb-1">
-                            {new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                          </span>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Culto: {ev.description}</span>
-                        </div>
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-3">
+              {modalData.events.length === 0 ? (
+                <div className="py-20 text-center">
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhum registro encontrado</p>
+                </div>
+              ) : (
+                modalData.events.map((ev, i) => (
+                  <div key={i} className="flex justify-between items-center p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm animate-fadeIn" style={{ animationDelay: `${i * 0.05}s` }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-100 shadow-sm">
+                        <span className="text-[10px] font-black text-indigo-600">#{modalData.events.length - i}</span>
                       </div>
-                      <span className="material-icons text-slate-200 text-sm">event_available</span>
+                      <div className="flex flex-col">
+                        <span className="font-black text-[#1a1c3d] text-base leading-none mb-1">
+                          {new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Culto: {ev.description}</span>
+                      </div>
                     </div>
-                  ))
-                )}
-              </div>
-              
-              <button 
-                onClick={() => setModalData(null)} 
-                className="w-full mt-8 py-5 bg-slate-50 text-slate-500 font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all"
-              >
-                VOLTAR
-              </button>
+                    <span className="material-icons text-slate-200 text-sm">event_available</span>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            <div className="p-8 bg-slate-50 shrink-0">
+              <button onClick={() => setModalData(null)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all shadow-xl">FECHAR DETALHES</button>
             </div>
           </div>
         </div>

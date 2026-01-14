@@ -25,14 +25,10 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
       r.roles?.gate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       r.songs.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
     ).sort((a, b) => {
-      // Ordenação para EXIBIÇÃO: Mais recente primeiro
       const dateCompare = b.date.localeCompare(a.date);
       if (dateCompare !== 0) return dateCompare;
-      
-      // No mesmo dia: DOM (noite) aparece acima da EBD (manhã) na tela
       if (a.description === 'EBD' && b.description === 'DOM') return 1;
       if (a.description === 'DOM' && b.description === 'EBD') return -1;
-      
       return 0;
     });
 
@@ -46,7 +42,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
     return groups;
   }, [history, searchTerm]);
 
-  // Formata a mensagem de um único registro para WhatsApp
   const formatServiceMessage = (r: ServiceRecord) => {
     const d = new Date(r.date + 'T12:00:00');
     const day = d.getDay();
@@ -73,12 +68,10 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
     return msg;
   };
 
-  // Função auxiliar para ordenar cronologicamente (Antigo -> Novo) para o WhatsApp
   const sortChronologically = (records: ServiceRecord[]) => {
     return [...records].sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
-      // No mesmo dia: EBD (manhã) vem antes de DOM (noite) na mensagem
       if (a.description === 'EBD' && b.description === 'DOM') return -1;
       if (a.description === 'DOM' && b.description === 'EBD') return 1;
       return 0;
@@ -107,7 +100,7 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
   const shareAll = () => {
     const sortedHistory = sortChronologically(history);
     let msg = `*HISTÓRICO COMPLETO DE CULTOS*\n*ICM SANTO ANTÔNIO II*\n\n`;
-    const limitedHistory = sortedHistory.slice(-15); // Últimos 15 para evitar limites do WA
+    const limitedHistory = sortedHistory.slice(-15);
     
     limitedHistory.forEach(r => {
       msg += formatServiceMessage(r);
@@ -148,19 +141,12 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
         <div key={month} className="space-y-4">
           <div className="flex items-center justify-between px-4">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{month}</h3>
-            <button 
-              onClick={() => shareMonth(month)} 
-              className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-1 hover:underline bg-indigo-50/50 px-3 py-1.5 rounded-full"
-            >
-              <span className="material-icons text-xs">share</span> Compartilhar Mês
-            </button>
           </div>
           
           <div className="grid gap-4">
             {records.map(record => (
               <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100 group animate-fadeIn">
                 <div className="flex flex-col gap-6">
-                  {/* CABEÇALHO DO CARD */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100">
@@ -180,7 +166,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
                     </div>
                   </div>
 
-                  {/* GRID DE INFORMAÇÕES COMPLETAS */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-50 pt-5">
                     <InfoTag label="Portão" value={record.roles.gate} icon="door_front" />
                     <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" />
@@ -188,7 +173,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
                     <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" />
                   </div>
 
-                  {/* LISTAGEM DOS LOUVORES NO CARD */}
                   {record.songs.length > 0 && (
                     <div className="pt-5 border-t border-slate-50">
                       <div className="flex items-center gap-2 mb-3">
@@ -212,28 +196,52 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
         </div>
       ))}
 
-      {/* MODAL SELETOR DE MÊS */}
+      {/* Bottom Sheet - Seletor de Mês */}
       {isMonthPickerOpen && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/90 backdrop-blur-md flex items-center justify-center z-[3000] p-6 animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp border border-white">
+        <div className="fixed inset-0 z-[6000] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setIsMonthPickerOpen(false)} />
+          <div className="relative bg-white rounded-t-[3rem] p-8 max-h-[85vh] flex flex-col shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slideUp">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8 shrink-0"></div>
             <h3 className="text-xl font-black text-[#1a1c3d] mb-6 uppercase tracking-tighter text-center">Selecionar Mês</h3>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar pb-8">
               {Object.keys(groupedHistory).length > 0 ? (
                 Object.keys(groupedHistory).map(monthKey => (
                   <button 
                     key={monthKey}
                     onClick={() => { shareMonth(monthKey); setIsMonthPickerOpen(false); }}
-                    className="w-full py-4 px-6 bg-slate-50 hover:bg-indigo-50 text-[#1a1c3d] font-bold rounded-2xl flex justify-between items-center transition-all group"
+                    className="w-full py-5 px-6 bg-slate-50 hover:bg-indigo-50 text-[#1a1c3d] font-bold rounded-2xl flex justify-between items-center transition-all group"
                   >
                     <span className="text-sm uppercase tracking-tight">{monthKey}</span>
-                    <span className="material-icons text-indigo-400 group-hover:translate-x-1 transition-transform">chevron_right</span>
+                    <span className="material-icons text-indigo-400 group-hover:translate-x-1 transition-transform">share</span>
                   </button>
                 ))
               ) : (
                 <p className="text-center text-slate-400 font-bold text-[10px] uppercase py-10">Nenhum mês disponível</p>
               )}
             </div>
-            <button onClick={() => setIsMonthPickerOpen(false)} className="w-full mt-6 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-rose-500 transition-colors">FECHAR</button>
+            <button onClick={() => setIsMonthPickerOpen(false)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest shrink-0">FECHAR</button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Sheet - Confirmação de Exclusão */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-[6000] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setItemToDelete(null)} />
+          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slideUp">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mb-6 text-rose-500">
+                <span className="material-icons text-3xl">delete_forever</span>
+              </div>
+              <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Excluir Relatório?</h3>
+              <p className="text-slate-400 font-bold text-[10px] uppercase mb-8">Esta ação não poderá ser desfeita.</p>
+              
+              <div className="w-full flex flex-col gap-3">
+                <button onClick={() => { onDelete(itemToDelete!); setItemToDelete(null); }} className="w-full py-5 bg-rose-500 text-white font-black rounded-2xl shadow-xl active:scale-95">EXCLUIR AGORA</button>
+                <button onClick={() => setItemToDelete(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -242,22 +250,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
         <div className="text-center py-24 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 mx-1">
           <span className="material-icons text-slate-200 text-6xl mb-4">history_toggle_off</span>
           <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">Nenhum culto registrado</p>
-        </div>
-      )}
-
-      {itemToDelete && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/90 backdrop-blur-md flex items-center justify-center z-[3000] p-6 animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
-            <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 text-rose-500">
-              <span className="material-icons text-3xl">delete_forever</span>
-            </div>
-            <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Excluir Relatório?</h3>
-            <p className="text-slate-400 font-bold text-[10px] uppercase mb-8">Esta ação não pode ser desfeita.</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => { onDelete(itemToDelete!); setItemToDelete(null); }} className="w-full py-5 bg-rose-500 text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all">EXCLUIR AGORA</button>
-              <button onClick={() => setItemToDelete(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
-            </div>
-          </div>
         </div>
       )}
     </div>

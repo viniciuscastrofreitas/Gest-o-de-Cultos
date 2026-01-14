@@ -29,7 +29,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pendingSong, setPendingSong] = useState<{name: string, diff: number, lastDate: string} | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [showSuccessBox, setShowSuccessBox] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const dayOfWeekNames = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
   const fullDayNames = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
@@ -51,7 +51,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   const handleSave = () => {
     onSave(draft);
-    setShowSuccessBox(true);
+    setShowSuccessModal(true);
   };
 
   const checkAndAddSong = (songName: string) => {
@@ -120,6 +120,26 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   return (
     <>
+      {/* Modal de Sucesso - Restaurado conforme versão anterior */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
+          <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
+            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
+              <span className="material-icons text-4xl">check_circle</span>
+            </div>
+            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Relatório Salvo!</h3>
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Dados registrados com sucesso.</p>
+            <button 
+              onClick={() => setShowSuccessModal(false)} 
+              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
+            >
+              OK, CONTINUAR
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
         <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-white">
           <div className="space-y-8">
@@ -222,7 +242,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               </div>
 
               {dateInfo.isWednesday && (
-                <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-100 flex items-center justify-center gap-3 text-indigo-700 animate-scaleUp">
+                <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-100 flex items-center justify-center gap-3 text-indigo-700">
                   <span className="text-lg">🌸</span>
                   <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Culto do Grupo de Senhoras</span>
                 </div>
@@ -254,7 +274,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
                   <div className="flex flex-col min-h-[70px] justify-end">
                     {draft.roles.word === 'TRANSMISSÃO' ? (
-                      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-scaleUp">
+                      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-fadeIn">
                         <span className="text-lg">📡</span>
                         <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Transmissão via satélite</span>
                       </div>
@@ -292,27 +312,23 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
         </div>
       </div>
 
-      {showSuccessBox && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/90 flex items-center justify-center z-[3000] p-6 backdrop-blur-md animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-scaleUp border border-white p-10 text-center">
-            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
-              <span className="material-icons text-5xl">check_circle</span>
-            </div>
-            <h3 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter mb-2">Salvo!</h3>
-            <button onClick={() => setShowSuccessBox(false)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-sm tracking-widest active:scale-95 shadow-xl">OK</button>
-          </div>
-        </div>
-      )}
-
+      {/* Bottom Sheet para Hino Recorrente (Continua como Bottom Sheet por ser seletor) */}
       {pendingSong && (
-        <div className="fixed inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl flex items-center justify-center z-[2000] p-6 animate-fadeIn">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">
-            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-500"><span className="material-icons text-3xl">warning_amber</span></div>
-            <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
-            <p className="text-slate-500 font-bold mb-8 leading-relaxed text-[11px]">Há <span className="text-amber-600 font-black">{pendingSong.diff} dias</span>. Prosseguir?</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg active:scale-95">SIM</button>
-              <button onClick={() => setPendingSong(null)} className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
+        <div className="fixed inset-0 z-[6000] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setPendingSong(null)} />
+          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slideUp">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6 text-amber-500">
+                <span className="material-icons text-3xl">warning_amber</span>
+              </div>
+              <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
+              <p className="text-slate-500 font-bold mb-8 leading-relaxed text-[11px]">Cantado há apenas <span className="text-amber-600 font-black">{pendingSong.diff} dias</span>. Deseja prosseguir?</p>
+              
+              <div className="w-full flex flex-col gap-3">
+                <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95">CONFIRMAR E ADICIONAR</button>
+                <button onClick={() => setPendingSong(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
+              </div>
             </div>
           </div>
         </div>
