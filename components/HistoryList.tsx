@@ -12,6 +12,7 @@ interface Props {
 const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
 
   const monthNames = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
   const dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
@@ -23,7 +24,17 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
       r.roles?.praise?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       r.roles?.gate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       r.songs.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).sort((a, b) => b.date.localeCompare(a.date));
+    ).sort((a, b) => {
+      // Ordenação para EXIBIÇÃO: Mais recente primeiro
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      
+      // No mesmo dia: DOM (noite) aparece acima da EBD (manhã) na tela
+      if (a.description === 'EBD' && b.description === 'DOM') return 1;
+      if (a.description === 'DOM' && b.description === 'EBD') return -1;
+      
+      return 0;
+    });
 
     const groups: Record<string, ServiceRecord[]> = {};
     filtered.forEach(record => {
@@ -35,6 +46,7 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
     return groups;
   }, [history, searchTerm]);
 
+  // Formata a mensagem de um único registro para WhatsApp
   const formatServiceMessage = (r: ServiceRecord) => {
     const d = new Date(r.date + 'T12:00:00');
     const day = d.getDay();
@@ -61,6 +73,18 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
     return msg;
   };
 
+  // Função auxiliar para ordenar cronologicamente (Antigo -> Novo) para o WhatsApp
+  const sortChronologically = (records: ServiceRecord[]) => {
+    return [...records].sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      // No mesmo dia: EBD (manhã) vem antes de DOM (noite) na mensagem
+      if (a.description === 'EBD' && b.description === 'DOM') return -1;
+      if (a.description === 'DOM' && b.description === 'EBD') return 1;
+      return 0;
+    });
+  };
+
   const shareIndividual = (record: ServiceRecord) => {
     let msg = `*ICM SANTO ANTÔNIO II*\n\n`;
     msg += formatServiceMessage(record);
@@ -68,9 +92,12 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
   };
 
   const shareMonth = (monthKey: string) => {
-    const records = (groupedHistory as Record<string, ServiceRecord[]>)[monthKey];
+    const rawRecords = (groupedHistory as Record<string, ServiceRecord[]>)[monthKey];
+    if (!rawRecords) return;
+    const sortedRecords = sortChronologically(rawRecords);
+    
     let msg = `*RESUMO MENSAL - ${monthKey}*\n*ICM SANTO ANTÔNIO II*\n\n`;
-    [...records].sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
+    sortedRecords.forEach(r => {
       msg += formatServiceMessage(r);
       msg += `_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\n`;
     });
@@ -78,8 +105,11 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
   };
 
   const shareAll = () => {
-    let msg = `*HISTÓRICO DE CULTOS*\n*ICM SANTO ANTÔNIO II*\n\n`;
-    history.slice(0, 10).forEach(r => {
+    const sortedHistory = sortChronologically(history);
+    let msg = `*HISTÓRICO COMPLETO DE CULTOS*\n*ICM SANTO ANTÔNIO II*\n\n`;
+    const limitedHistory = sortedHistory.slice(-15); // Últimos 15 para evitar limites do WA
+    
+    limitedHistory.forEach(r => {
       msg += formatServiceMessage(r);
       msg += `_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\n`;
     });
@@ -101,12 +131,15 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-10">
-      <div className="flex items-center gap-3 px-1">
+      <div className="flex items-center gap-2 px-1">
         <div className="flex-1 bg-white rounded-full flex items-center px-6 py-4 shadow-xl border border-slate-50">
           <span className="material-icons text-slate-300 mr-3">search</span>
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Pesquisar hino ou obreiro..." className="w-full bg-transparent font-bold text-slate-600 outline-none placeholder:text-slate-300" />
         </div>
-        <button onClick={shareAll} title="Compartilhar" className="bg-[#1a1c3d] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl shrink-0 active:scale-90 transition-transform">
+        <button onClick={() => setIsMonthPickerOpen(true)} title="Compartilhar por Mês" className="bg-indigo-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl shrink-0 active:scale-90 transition-transform">
+           <span className="material-icons">calendar_month</span>
+        </button>
+        <button onClick={shareAll} title="Compartilhar Geral (Cronológico)" className="bg-[#1a1c3d] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl shrink-0 active:scale-90 transition-transform">
            <span className="material-icons">share</span>
         </button>
       </div>
@@ -115,7 +148,10 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
         <div key={month} className="space-y-4">
           <div className="flex items-center justify-between px-4">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{month}</h3>
-            <button onClick={() => shareMonth(month)} className="text-[10px] font-black text-indigo-50 uppercase flex items-center gap-1 hover:underline">
+            <button 
+              onClick={() => shareMonth(month)} 
+              className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-1 hover:underline bg-indigo-50/50 px-3 py-1.5 rounded-full"
+            >
               <span className="material-icons text-xs">share</span> Compartilhar Mês
             </button>
           </div>
@@ -144,7 +180,7 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
                     </div>
                   </div>
 
-                  {/* GRID DE INFORMAÇÕES (TODOS OS DADOS DA ABA NOVO) */}
+                  {/* GRID DE INFORMAÇÕES COMPLETAS */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-50 pt-5">
                     <InfoTag label="Portão" value={record.roles.gate} icon="door_front" />
                     <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" />
@@ -175,6 +211,32 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit }) => {
           </div>
         </div>
       ))}
+
+      {/* MODAL SELETOR DE MÊS */}
+      {isMonthPickerOpen && (
+        <div className="fixed inset-0 bg-[#1a1c3d]/90 backdrop-blur-md flex items-center justify-center z-[3000] p-6 animate-fadeIn">
+          <div className="bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp border border-white">
+            <h3 className="text-xl font-black text-[#1a1c3d] mb-6 uppercase tracking-tighter text-center">Selecionar Mês</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {Object.keys(groupedHistory).length > 0 ? (
+                Object.keys(groupedHistory).map(monthKey => (
+                  <button 
+                    key={monthKey}
+                    onClick={() => { shareMonth(monthKey); setIsMonthPickerOpen(false); }}
+                    className="w-full py-4 px-6 bg-slate-50 hover:bg-indigo-50 text-[#1a1c3d] font-bold rounded-2xl flex justify-between items-center transition-all group"
+                  >
+                    <span className="text-sm uppercase tracking-tight">{monthKey}</span>
+                    <span className="material-icons text-indigo-400 group-hover:translate-x-1 transition-transform">chevron_right</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-slate-400 font-bold text-[10px] uppercase py-10">Nenhum mês disponível</p>
+              )}
+            </div>
+            <button onClick={() => setIsMonthPickerOpen(false)} className="w-full mt-6 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-rose-500 transition-colors">FECHAR</button>
+          </div>
+        </div>
+      )}
 
       {history.length === 0 && (
         <div className="text-center py-24 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 mx-1">
