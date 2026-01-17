@@ -11,6 +11,7 @@ import WorkerStats from './components/WorkerStats';
 import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
 import { initDB, saveData, loadData } from './db';
+import { auth, onAuthStateChanged } from './firebase';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'workers' | 'suggestions' | 'praise-ranking' | 'unplayed' | 'learning' | 'settings'>('new');
@@ -21,6 +22,8 @@ const App: React.FC = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState(auth.currentUser);
+  const [historyFilter, setHistoryFilter] = useState<{ worker: string; role: string } | null>(null);
 
   const getTodayDate = () => {
     const now = new Date();
@@ -37,6 +40,10 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
@@ -66,6 +73,7 @@ const App: React.FC = () => {
     };
     setup();
     return () => {
+      unsubscribe();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -150,7 +158,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
-      {/* SIDEBAR DESKTOP */}
       <aside className="hidden md:flex w-96 bg-[#1a1c3d] flex-col sticky top-0 h-screen shadow-2xl z-[150]">
         <div className="p-12 border-b border-white/5">
           <AppBrand />
@@ -169,7 +176,6 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      {/* HEADER MOBILE */}
       <header className="md:hidden bg-[#1a1c3d] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl rounded-b-[2rem]">
         <AppBrand />
         <button onClick={() => setIsMobileMenuOpen(true)} className="p-4 bg-white/10 rounded-2xl active:scale-90 transition-transform">
@@ -177,7 +183,6 @@ const App: React.FC = () => {
         </button>
       </header>
 
-      {/* MOBILE DRAWER */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[300] md:hidden">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-lg" onClick={() => setIsMobileMenuOpen(false)}></div>
@@ -202,16 +207,35 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN CONTENT AREA */}
       <main className="flex-1 min-w-0">
         {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-[92px] md:top-0 z-[190] shadow-lg">Você está operando offline.</div>}
         
-        {/* Ajustado pt-14 no mobile para evitar sobreposição com o cabeçalho sticky arredondado */}
         <div className="px-4 pt-14 pb-20 md:p-16 animate-fadeIn max-w-6xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
-          {activeTab === 'history' && <HistoryList history={history} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} />}
+          
+          {activeTab === 'history' && (
+            <HistoryList 
+              history={history} 
+              onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} 
+              onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} 
+              onClearAll={() => {}} 
+              externalFilter={historyFilter}
+              onClearExternalFilter={() => setHistoryFilter(null)}
+            />
+          )}
+          
           {activeTab === 'learning' && <PraiseLearningList fullSongList={fullSongList} learningList={learningList} setLearningList={setLearningList} />}
-          {activeTab === 'workers' && <WorkerRanking history={history} />}
+          
+          {activeTab === 'workers' && (
+            <WorkerRanking 
+              history={history} 
+              onFilterHistory={(worker, role) => {
+                setHistoryFilter({ worker, role });
+                setActiveTab('history');
+              }}
+            />
+          )}
+          
           {activeTab === 'suggestions' && <WorkerStats history={history} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}

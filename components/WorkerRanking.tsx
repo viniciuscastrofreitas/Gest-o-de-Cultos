@@ -8,12 +8,15 @@ interface WorkerEvent {
   description: string;
 }
 
+// Fixed: Added onFilterHistory to Props interface to resolve TypeScript error in App.tsx
 interface Props {
   history: ServiceRecord[];
+  onFilterHistory: (worker: string, role: string) => void;
 }
 
-const WorkerRanking: React.FC<Props> = ({ history }) => {
-  const [modalData, setModalData] = useState<{ worker: string, role: string, events: WorkerEvent[] } | null>(null);
+const WorkerRanking: React.FC<Props> = ({ history, onFilterHistory }) => {
+  // Fixed: Added roleId to modalData to facilitate filtering by internal role key
+  const [modalData, setModalData] = useState<{ worker: string, role: string, roleId: string, events: WorkerEvent[] } | null>(null);
 
   const stats = useMemo(() => {
     const data: Record<string, { gate: WorkerEvent[], praise: WorkerEvent[], word: WorkerEvent[], total: number }> = {};
@@ -76,9 +79,9 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
                 </div>
               </div>
               <div className="p-5 flex gap-3 bg-slate-50/30">
-                <StatBox label="Portão" count={worker.gate.length} icon="door_front" onClick={() => setModalData({ worker: worker.name, role: 'Portão', events: worker.gate })} />
-                <StatBox label="Louvor" count={worker.praise.length} icon="music_note" onClick={() => setModalData({ worker: worker.name, role: 'Louvor', events: worker.praise })} />
-                <StatBox label="Palavra" count={worker.word.length} icon="record_voice_over" onClick={() => setModalData({ worker: worker.name, role: 'Palavra', events: worker.word })} />
+                <StatBox label="Portão" count={worker.gate.length} icon="door_front" onClick={() => setModalData({ worker: worker.name, role: 'Portão', roleId: 'gate', events: worker.gate })} />
+                <StatBox label="Louvor" count={worker.praise.length} icon="music_note" onClick={() => setModalData({ worker: worker.name, role: 'Louvor', roleId: 'praise', events: worker.praise })} />
+                <StatBox label="Palavra" count={worker.word.length} icon="record_voice_over" onClick={() => setModalData({ worker: worker.name, role: 'Palavra', roleId: 'word', events: worker.word })} />
               </div>
             </div>
           ))}
@@ -142,8 +145,19 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
               )}
             </div>
             
-            <div className="p-8 bg-slate-50 shrink-0 border-t border-slate-100">
-              <button onClick={() => setModalData(null)} className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all shadow-xl">VOLTAR AO RANKING</button>
+            <div className="p-8 bg-slate-50 shrink-0 border-t border-slate-100 flex flex-col gap-3">
+              <button 
+                onClick={() => {
+                  if (modalData) {
+                    onFilterHistory(modalData.worker, modalData.roleId);
+                    setModalData(null);
+                  }
+                }}
+                className="w-full py-5 bg-amber-400 text-[#1a1c3d] font-black rounded-3xl uppercase text-[11px] tracking-widest active:scale-95 transition-all shadow-xl"
+              >
+                VER NO HISTÓRICO
+              </button>
+              <button onClick={() => setModalData(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">VOLTAR AO RANKING</button>
             </div>
           </div>
         </div>
