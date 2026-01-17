@@ -1,7 +1,6 @@
 
-import { AppData } from './types';
+import { AppData, ServiceRecord } from './types';
 import { STORAGE_KEY } from './constants';
-import { db, doc, setDoc, getDoc, auth } from './firebase';
 
 const DB_NAME = 'ChurchServiceDB';
 const DB_VERSION = 1;
@@ -19,6 +18,7 @@ export const initDB = (): Promise<void> => {
     };
 
     request.onsuccess = () => {
+      // Solicitar armazenamento persistente se disponível
       if (navigator.storage && navigator.storage.persist) {
         navigator.storage.persist().then(persistent => {
           console.log(persistent ? "Armazenamento persistente ativado" : "Armazenamento persistente negado");
@@ -31,9 +31,8 @@ export const initDB = (): Promise<void> => {
   });
 };
 
-export const saveData = async (data: AppData): Promise<void> => {
-  // Salva Localmente (Prioridade)
-  const saveLocal = new Promise<void>((resolve, reject) => {
+export const saveData = (data: AppData): Promise<void> => {
+  return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onsuccess = () => {
       const db = request.result;
@@ -44,22 +43,6 @@ export const saveData = async (data: AppData): Promise<void> => {
       transaction.onerror = () => reject(transaction.error);
     };
   });
-
-  await saveLocal;
-
-  // Sincroniza com Firebase se logado e online
-  if (auth.currentUser && navigator.onLine) {
-    try {
-      const userDoc = doc(db, "users", auth.currentUser.uid);
-      await setDoc(userDoc, {
-        ...data,
-        lastSync: new Date().toISOString()
-      }, { merge: true });
-      console.log("Sincronizado com a nuvem.");
-    } catch (e) {
-      console.warn("Falha na sincronização cloud:", e);
-    }
-  }
 };
 
 export const loadData = (): Promise<AppData | null> => {
@@ -75,18 +58,4 @@ export const loadData = (): Promise<AppData | null> => {
     };
     request.onerror = () => reject(request.error);
   });
-};
-
-export const loadFromCloud = async (): Promise<AppData | null> => {
-  if (!auth.currentUser) return null;
-  try {
-    const userDoc = doc(db, "users", auth.currentUser.uid);
-    const snap = await getDoc(userDoc);
-    if (snap.exists()) {
-      return snap.data() as AppData;
-    }
-  } catch (e) {
-    console.error("Erro ao carregar da nuvem:", e);
-  }
-  return null;
 };
