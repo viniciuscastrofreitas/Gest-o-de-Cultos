@@ -28,7 +28,7 @@ const HistoryList: React.FC<Props> = ({
   const groupedHistory = useMemo(() => {
     let filtered = [...history];
 
-    // FILTRO ESPECÍFICO DO RANKING (O que você pediu)
+    // FILTRO ESPECÍFICO DO RANKING
     if (externalFilter) {
       filtered = filtered.filter(r => 
         r.roles[externalFilter.role as keyof typeof r.roles] === externalFilter.worker
@@ -92,6 +92,11 @@ const HistoryList: React.FC<Props> = ({
     let msg = `*RELATÓRIO - ${dateFormatted}* (${r.description})\n`;
     msg += `Portão: ${r.roles.gate || '-'}\nLouvor: ${r.roles.praise || '-'}\nPalavra: ${r.roles.word || '-'}\n`;
     if (r.roles.scripture) msg += `Texto: ${r.roles.scripture}\n`;
+    
+    if (r.songs && r.songs.length > 0) {
+      msg += `\n*LOUVORES:*\n`;
+      r.songs.forEach((s, i) => msg += `${i + 1}. ${s}\n`);
+    }
     return msg;
   };
 
@@ -126,7 +131,7 @@ const HistoryList: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* BANNER DE FILTRO ATIVO - ESTILIZADO */}
+        {/* BANNER DE FILTRO ATIVO */}
         {externalFilter && (
           <div className="bg-[#1a1c3d] rounded-3xl p-5 shadow-2xl animate-scaleUp border border-white/5 relative overflow-hidden">
             <div className="absolute right-0 top-0 opacity-10">
@@ -189,7 +194,7 @@ const HistoryList: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Funções do Culto com Destaque Dinâmico */}
+                  {/* Funções do Culto */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-slate-50 pt-5">
                     <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
                     <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
