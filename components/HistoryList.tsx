@@ -88,14 +88,27 @@ const HistoryList: React.FC<Props> = ({
 
   const formatServiceMessage = (r: ServiceRecord) => {
     const d = new Date(r.date + 'T12:00:00');
+    const dayName = d.toLocaleDateString('pt-BR', { weekday: 'long' }).toUpperCase();
     const dateFormatted = d.toLocaleDateString('pt-BR');
-    let msg = `*RELATÓRIO - ${dateFormatted}* (${r.description})\n`;
-    msg += `Portão: ${r.roles.gate || '-'}\nLouvor: ${r.roles.praise || '-'}\nPalavra: ${r.roles.word || '-'}\n`;
-    if (r.roles.scripture) msg += `Texto: ${r.roles.scripture}\n`;
+    const isWednesday = d.getDay() === 3;
+
+    let msg = `RELATÓRIO DE CULTO\n`;
+    msg += `ICM SANTO ANTÔNIO II\n\n`;
+    msg += `DATA: ${dateFormatted} (${dayName})\n`;
+
+    if (isWednesday) {
+      msg += `*CULTO DIRIGIDO PELO GRUPO DE SENHORAS*\n`;
+      if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
+    } else {
+      if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
+      if (r.roles.praise) msg += `> Louvor: ${r.roles.praise}\n`;
+      if (r.roles.word) msg += `> Palavra: ${r.roles.word}\n`;
+      if (r.roles.scripture) msg += `> Texto: ${r.roles.scripture}\n`;
+    }
     
     if (r.songs && r.songs.length > 0) {
-      msg += `\n*LOUVORES:*\n`;
-      r.songs.forEach((s, i) => msg += `${i + 1}. ${s}\n`);
+      msg += `Louvores: \n`;
+      r.songs.forEach((s) => msg += ` - ${s}\n`);
     }
     return msg;
   };
