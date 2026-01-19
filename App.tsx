@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { INITIAL_PRAISE_LIST } from './constants';
 import { ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './types';
 import ServiceForm from './components/ServiceForm';
@@ -11,6 +11,7 @@ import WorkerStats from './components/WorkerStats';
 import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
 import { initDB, saveData, loadData } from './db';
+import { supabase } from './supabase';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'workers' | 'suggestions' | 'praise-ranking' | 'unplayed' | 'learning' | 'settings'>('new');
@@ -21,6 +22,13 @@ const App: React.FC = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local'>('local');
+  
+  // Flag crucial para evitar sobrescrever a nuvem com dados vazios no início
+  const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
+
+  const syncTimeoutRef = useRef<number | null>(null);
 
   const getTodayDate = () => {
     const now = new Date();
@@ -36,11 +44,21 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
+  // 1. Inicialização e Monitoramento de Auth
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session) setHasCheckedCloud(false); // Reset ao deslogar
+    });
 
     const setup = async () => {
       try {
@@ -50,13 +68,7 @@ const App: React.FC = () => {
           if (data.history) setHistory(data.history);
           if (data.customSongs) setCustomSongs(data.customSongs);
           if (data.learningList) setLearningList(data.learningList);
-          if (data.draft) {
-            setDraft({ 
-              ...data.draft, 
-              date: getTodayDate(), 
-              roles: data.draft.roles || { ...emptyRoles }
-            });
-          }
+          if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
         }
       } catch (e) {
         console.error("Erro no DB", e);
@@ -65,15 +77,79 @@ const App: React.FC = () => {
       }
     };
     setup();
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      subscription.unsubscribe();
     };
   }, []);
 
+  // 2. Auto-Restore ao logar (Proteção contra perda de dados)
   useEffect(() => {
-    if (!isLoading) saveData({ history, customSongs, draft, learningList });
-  }, [history, customSongs, draft, learningList, isLoading]);
+    if (user && !isLoading && !hasCheckedCloud) {
+      const autoRestore = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('user_data')
+            .select('json_data')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (error) throw error;
+
+          if (data?.json_data) {
+            const cloud = data.json_data;
+            // Só restaura se o local estiver vazio para não causar confusão,
+            // ou se o usuário acabou de logar em um dispositivo limpo.
+            if (history.length === 0) {
+              setHistory(cloud.history || []);
+              setCustomSongs(cloud.customSongs || []);
+              setLearningList(cloud.learningList || []);
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao verificar nuvem:", e);
+        } finally {
+          setHasCheckedCloud(true); // Agora é seguro sincronizar local -> nuvem
+          setSyncStatus('synced');
+        }
+      };
+      autoRestore();
+    }
+  }, [user, isLoading, hasCheckedCloud]);
+
+  // 3. Auto-Sync Controlado
+  useEffect(() => {
+    if (isLoading) return;
+
+    // Salva Localmente Sempre
+    saveData({ history, customSongs, draft, learningList });
+
+    // Sincronização Cloud só ocorre após a verificação inicial (hasCheckedCloud)
+    if (user && !isOffline && hasCheckedCloud) {
+      setSyncStatus('syncing');
+      if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+      
+      syncTimeoutRef.current = window.setTimeout(async () => {
+        try {
+          const { error } = await supabase.from('user_data').upsert({ 
+            user_id: user.id, 
+            json_data: { history, customSongs, learningList },
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+          
+          if (error) throw error;
+          setSyncStatus('synced');
+        } catch (e) {
+          console.error("Falha no Auto-Sync:", e);
+          setSyncStatus('local'); // Indica que não está garantido na nuvem
+        }
+      }, 3000); // 3 segundos de delay para poupar bateria/dados
+    } else if (!user) {
+      setSyncStatus('local');
+    }
+  }, [history, customSongs, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
 
   const fullSongList = useMemo(() => {
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
@@ -102,12 +178,7 @@ const App: React.FC = () => {
     } else {
       setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
     }
-    setDraft({ 
-      date: getTodayDate(), 
-      description: '', 
-      songs: [], 
-      roles: { ...emptyRoles }
-    });
+    setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles } });
   };
 
   const menuItems = [
@@ -134,8 +205,12 @@ const App: React.FC = () => {
       </div>
       <div className="flex flex-col">
         <div className="flex items-center gap-2">
-           <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
-           <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">Gestão de Culto</span>
+           <span className={`material-icons text-[14px] ${syncStatus === 'synced' ? 'text-emerald-400' : syncStatus === 'syncing' ? 'text-amber-400 animate-spin' : 'text-white/20'}`}>
+             {syncStatus === 'synced' ? 'cloud_done' : syncStatus === 'syncing' ? 'sync' : 'cloud_off'}
+           </span>
+           <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">
+             {syncStatus === 'synced' ? 'Nuvem OK' : syncStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
+           </span>
         </div>
         <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
         <div className="mt-1 bg-white/10 self-start px-3 py-1 rounded-full flex items-center gap-2">
@@ -146,11 +221,29 @@ const App: React.FC = () => {
     </div>
   );
 
+  const UserProfile = () => {
+    if (!user) return null;
+    return (
+      <div className="px-10 py-6 border-t border-white/5 flex items-center gap-4">
+        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center overflow-hidden border border-white/10">
+          {user.user_metadata?.avatar_url ? (
+            <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+          ) : (
+            <span className="material-icons text-white text-xl">person</span>
+          )}
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className="text-white font-black text-[10px] uppercase truncate">{user.user_metadata?.full_name || user.email}</span>
+          <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Sincronizado</span>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) return <div className="min-h-screen bg-[#1a1c3d] flex flex-col items-center justify-center text-white p-10"><img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" className="w-20 h-20 animate-bounce mb-6" /><p className="font-black tracking-widest text-sm animate-pulse">CARREGANDO SISTEMA...</p></div>;
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
-      {/* SIDEBAR DESKTOP */}
       <aside className="hidden md:flex w-96 bg-[#1a1c3d] flex-col sticky top-0 h-screen shadow-2xl z-[150]">
         <div className="p-12 border-b border-white/5">
           <AppBrand />
@@ -167,9 +260,9 @@ const App: React.FC = () => {
             </button>
           ))}
         </nav>
+        <UserProfile />
       </aside>
 
-      {/* HEADER MOBILE */}
       <header className="md:hidden bg-[#1a1c3d] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl rounded-b-[2rem]">
         <AppBrand />
         <button onClick={() => setIsMobileMenuOpen(true)} className="p-4 bg-white/10 rounded-2xl active:scale-90 transition-transform">
@@ -177,7 +270,6 @@ const App: React.FC = () => {
         </button>
       </header>
 
-      {/* MOBILE DRAWER */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[300] md:hidden">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-lg" onClick={() => setIsMobileMenuOpen(false)}></div>
@@ -198,15 +290,14 @@ const App: React.FC = () => {
                 </button>
               ))}
             </nav>
+            <UserProfile />
           </div>
         </div>
       )}
 
-      {/* MAIN CONTENT AREA */}
       <main className="flex-1 min-w-0">
         {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-[92px] md:top-0 z-[190] shadow-lg">Você está operando offline.</div>}
         
-        {/* Ajustado pt-14 no mobile para evitar sobreposição com o cabeçalho sticky arredondado */}
         <div className="px-4 pt-14 pb-20 md:p-16 animate-fadeIn max-w-6xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} />}
