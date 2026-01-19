@@ -82,9 +82,34 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, on
       if (data?.json_data) {
         onRestore(data.json_data.history || [], data.json_data.customSongs || [], data.json_data.learningList || []);
         alert("Restaurado com sucesso!");
+      } else {
+        alert("Nenhum dado encontrado na nuvem para este usuário.");
       }
     } catch (e: any) { alert("Erro ao baixar dados."); }
     finally { setIsSyncing(false); }
+  };
+
+  const handleUploadToCloud = async () => {
+    if (!user) return;
+    if (!window.confirm("Deseja enviar seus dados locais atuais para a nuvem? Isso sobrescreverá o backup online anterior.")) return;
+
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('user_data').upsert({
+        user_id: user.id,
+        json_data: { history, customSongs, learningList },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      
+      await fetchLastSync(user.id);
+      alert("Dados enviados para a nuvem com sucesso!");
+    } catch (e: any) {
+      alert("Erro ao enviar dados: " + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -116,37 +141,60 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, on
               <AuthForm onSuccess={() => {}} />
             </div>
           ) : (
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-              <div className="flex items-center gap-6">
-                <div className="w-16 h-16 rounded-3xl bg-emerald-500 text-white flex items-center justify-center shadow-xl animate-scaleUp">
-                  <span className="material-icons text-3xl">verified_user</span>
+            <div className="flex flex-col space-y-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-3xl bg-emerald-500 text-white flex items-center justify-center shadow-xl animate-scaleUp">
+                    <span className="material-icons text-3xl">verified_user</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Conta Conectada</span>
+                    <h3 className="text-white font-black text-lg tracking-tight truncate max-w-[200px]">
+                      {user.email}
+                    </h3>
+                    <p className="text-white/40 text-[10px] font-medium uppercase mt-1">
+                      {lastSyncDate ? `Último envio: ${new Date(lastSyncDate).toLocaleString('pt-BR')}` : 'Aguardando sincronização'}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Conta Conectada</span>
-                  <h3 className="text-white font-black text-lg tracking-tight truncate max-w-[200px]">
-                    {user.email}
-                  </h3>
-                  <p className="text-white/40 text-[10px] font-medium uppercase mt-1">
-                    {lastSyncDate ? `Auto-Sync Ativo • ${new Date(lastSyncDate).toLocaleString('pt-BR')}` : 'Sincronização ativa'}
-                  </p>
+
+                <div className="flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => supabase.auth.signOut()}
+                    className="bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
+                  >
+                    Sair da Conta
+                  </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                <button 
+                  disabled={isSyncing}
+                  onClick={handleUploadToCloud}
+                  className="bg-indigo-500 text-white hover:bg-indigo-600 px-6 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
+                >
+                  <span className={`material-icons ${isSyncing ? 'animate-spin' : ''}`}>
+                    {isSyncing ? 'sync' : 'cloud_upload'}
+                  </span>
+                  {isSyncing ? 'Processando...' : 'Enviar para Nuvem'}
+                </button>
+
                 <button 
                   disabled={isSyncing}
                   onClick={handleRestoreFromCloud}
-                  className="bg-white/10 text-white hover:bg-white/20 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95"
+                  className="bg-white/10 text-white hover:bg-white/20 px-6 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
                 >
-                  {isSyncing ? 'Baixando...' : 'Restaurar Cloud'}
-                </button>
-                <button 
-                  onClick={() => supabase.auth.signOut()}
-                  className="bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
-                >
-                  Sair
+                  <span className={`material-icons ${isSyncing ? 'animate-spin' : ''}`}>
+                    {isSyncing ? 'sync' : 'cloud_download'}
+                  </span>
+                  {isSyncing ? 'Processando...' : 'Restaurar Cloud'}
                 </button>
               </div>
+              
+              <p className="text-center text-white/20 text-[9px] font-black uppercase tracking-[0.3em]">
+                O auto-sync salva alterações automaticamente a cada 3 segundos
+              </p>
             </div>
           )}
         </div>
