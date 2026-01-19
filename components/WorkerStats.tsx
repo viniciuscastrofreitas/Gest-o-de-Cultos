@@ -6,7 +6,7 @@ import { WORKERS_LIST } from '../constants';
 interface Props { history: ServiceRecord[]; }
 
 const CULTOS = [
-  { id: 'SEG', label: 'SEGUNDA', fullName: 'SEGUNDA-FEIRA', roles: ['gate', 'word'] },
+  { id: 'SEG', label: 'SEGUNDA', fullName: 'SEGUNDA-FEIRA', roles: ['gate', 'praise'] },
   { id: 'TER', label: 'TERÇA', fullName: 'TERÇA-FEIRA', roles: ['gate', 'praise', 'word'] },
   { id: 'QUA', label: 'QUARTA', fullName: 'QUARTA-FEIRA', roles: ['gate'] },
   { id: 'QUI', label: 'QUINTA', fullName: 'QUINTA-FEIRA', roles: ['gate', 'praise', 'word'] },
