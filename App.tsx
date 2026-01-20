@@ -305,7 +305,7 @@ const App: React.FC = () => {
           {activeTab === 'workers' && <WorkerRanking history={history} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
-          {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
+          {activeTab === 'unplayed' && <UnplayedList fullSongList={INITIAL_PRAISE_LIST} history={history} />}
           {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} />}
         </div>
       </main>
