@@ -45,6 +45,7 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
+  // Listener de conexão global
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -60,7 +61,8 @@ const App: React.FC = () => {
           if (localData.history) setHistory(localData.history);
           if (localData.customSongs) setCustomSongs(localData.customSongs);
           if (localData.learningList) setLearningList(localData.learningList);
-          if (localData.draft) setDraft({ ...localData.draft, date: getTodayDate() });
+          // Carrega rascunho local se existir
+          if (localData.draft) setDraft(localData.draft);
         }
 
         const { data: { session } } = await supabase.auth.getSession();
@@ -76,10 +78,12 @@ const App: React.FC = () => {
 
           if (cloudData?.json_data) {
             const cloud = cloudData.json_data;
+            // Só substitui o rascunho se o local estiver vazio para evitar perda de dados imediatos
             if (localData?.history?.length === 0 && cloud.history?.length > 0) {
-              setHistory(cloud.history);
+              setHistory(cloud.history || []);
               setCustomSongs(cloud.customSongs || []);
               setLearningList(cloud.learningList || []);
+              if (cloud.draft) setDraft(cloud.draft);
             }
           }
         }
@@ -103,22 +107,29 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Persistência Local (IndexedDB) - Sempre salva rascunhos e histórico localmente
   useEffect(() => {
     if (isLoading) return;
     saveData({ history, customSongs, draft, learningList });
   }, [history, customSongs, draft, learningList, isLoading]);
 
+  // Sincronização em Nuvem (Supabase) - Refinado para ser mais eficaz ao reconectar
   useEffect(() => {
-    if (!isReadyForCloudSync || !user || isOffline) return;
+    // Se não estiver pronto, não tiver usuário ou estiver offline, mantém status 'local'
+    if (!isReadyForCloudSync || !user || isOffline) {
+      if (user && isOffline) setSyncStatus('local');
+      return;
+    }
 
     setSyncStatus('syncing');
     if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
     
+    // O rascunho (draft) agora é incluído no sync para persistência entre dispositivos e segurança
     syncTimeoutRef.current = window.setTimeout(async () => {
       try {
         const { error } = await supabase.from('user_data').upsert({ 
           user_id: user.id, 
-          json_data: { history, customSongs, learningList },
+          json_data: { history, customSongs, learningList, draft },
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
         
@@ -128,12 +139,12 @@ const App: React.FC = () => {
         console.error("Falha no Auto-Sync Cloud:", e);
         setSyncStatus('local');
       }
-    }, 3000);
+    }, 2000); // Reduzido para 2s para sync mais ágil
 
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
     };
-  }, [history, customSongs, learningList, user, isOffline, isReadyForCloudSync]);
+  }, [history, customSongs, learningList, draft, user, isOffline, isReadyForCloudSync]);
 
   const handleManualUpload = async () => {
     if (!user || isOffline) return;
@@ -141,7 +152,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('user_data').upsert({
         user_id: user.id,
-        json_data: { history, customSongs, learningList },
+        json_data: { history, customSongs, learningList, draft },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
       if (error) throw error;
@@ -156,7 +167,7 @@ const App: React.FC = () => {
 
   const handleManualDownload = async () => {
     if (!user || isOffline) return;
-    if (!window.confirm("Isso substituirá seus dados locais pela versão da nuvem. Continuar?")) return;
+    if (!window.confirm("Isso substituirá seus dados locais pela versão da nuvem (incluindo rascunhos). Continuar?")) return;
     setIsCloudActionLoading(true);
     try {
       const { data } = await supabase.from('user_data').select('json_data').eq('user_id', user.id).maybeSingle();
@@ -164,6 +175,7 @@ const App: React.FC = () => {
         setHistory(data.json_data.history || []);
         setCustomSongs(data.json_data.customSongs || []);
         setLearningList(data.json_data.learningList || []);
+        if (data.json_data.draft) setDraft(data.json_data.draft);
         alert("Dados recuperados da nuvem!");
       } else {
         alert("Nenhum dado encontrado na nuvem.");
@@ -202,17 +214,18 @@ const App: React.FC = () => {
     } else {
       setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
     }
+    // Reseta o rascunho para um estado inicial após salvar
     setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles } });
   };
 
   const menuItems = [
     { id: 'new', icon: 'add_circle', label: 'Novo Culto' },
     { id: 'history', icon: 'history', label: 'Histórico' },
+    { id: 'unplayed', icon: 'assignment_late', label: 'Hinos Restantes' },
     { id: 'learning', icon: 'school', label: 'Aprendizado' },
+    { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Escala / Sugestão' },
-    { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
-    { id: 'unplayed', icon: 'assignment_late', label: 'Hinos Restantes' },
     { id: 'settings', icon: 'settings', label: 'Backup / Sistema' },
   ] as const;
 

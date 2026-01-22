@@ -64,6 +64,16 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
     setExpandedCiasSubCats(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
+  const shareCategory = (catName: string, songs: string[], isCias: boolean) => {
+    if (songs.length === 0) return;
+    
+    let msg = `*LOUVORES RESTANTES - ${catName}*\n`;
+    msg += `Coletânea: ${isCias ? 'CIAS' : 'PRINCIPAL'}\n\n`;
+    songs.forEach(s => msg += `• ${s}\n`);
+    
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
   const { 
     groupedMain, 
     groupedCias,
@@ -258,20 +268,36 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar bg-white">
               {CATEGORIES.map(cat => (
                 <div key={cat.name} className="border border-slate-100 rounded-[1.5rem] overflow-hidden">
-                  <button 
-                    onClick={() => toggleSubCat(cat.name)}
-                    className={`w-full px-5 py-4 flex justify-between items-center transition-colors ${expandedSubCats[cat.name] ? 'bg-indigo-50/30' : 'bg-slate-50/30 hover:bg-slate-50'}`}
+                  <div 
+                    className={`w-full px-5 py-4 flex justify-between items-center transition-colors ${expandedSubCats[cat.name] ? 'bg-indigo-50/30' : 'bg-slate-50/30'}`}
                   >
-                    <div className="flex flex-col items-start">
-                      <span className={`text-[10px] font-black tracking-wider text-left pr-4 ${expandedSubCats[cat.name] ? 'text-indigo-600' : 'text-slate-500'}`}>
+                    <button 
+                      onClick={() => toggleSubCat(cat.name)}
+                      className="flex-1 flex flex-col items-start text-left"
+                    >
+                      <span className={`text-[10px] font-black tracking-wider pr-4 ${expandedSubCats[cat.name] ? 'text-indigo-600' : 'text-slate-500'}`}>
                         {cat.name}
                       </span>
                       <span className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Faltam {groupedMain[cat.name].length} hinos</span>
+                    </button>
+                    
+                    <div className="flex items-center gap-3">
+                      {groupedMain[cat.name].length > 0 && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); shareCategory(cat.name, groupedMain[cat.name], false); }}
+                          className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center active:scale-90 transition-transform"
+                          title="Compartilhar categoria"
+                        >
+                          <span className="material-icons text-base">share</span>
+                        </button>
+                      )}
+                      <button onClick={() => toggleSubCat(cat.name)}>
+                        <span className="material-icons text-slate-300 text-lg">
+                          {expandedSubCats[cat.name] ? 'expand_less' : 'expand_more'}
+                        </span>
+                      </button>
                     </div>
-                    <span className="material-icons text-slate-300 text-lg">
-                      {expandedSubCats[cat.name] ? 'expand_less' : 'expand_more'}
-                    </span>
-                  </button>
+                  </div>
                   
                   {expandedSubCats[cat.name] && (
                     <div className="p-3 grid gap-2 animate-fadeIn">
@@ -317,20 +343,36 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar bg-white">
               {CIAS_CATEGORIES.map(cat => (
                 <div key={cat.name} className="border border-slate-100 rounded-[1.5rem] overflow-hidden">
-                  <button 
-                    onClick={() => toggleCiasSubCat(cat.name)}
-                    className={`w-full px-5 py-4 flex justify-between items-center transition-colors ${expandedCiasSubCats[cat.name] ? 'bg-emerald-50/30' : 'bg-slate-50/30 hover:bg-slate-50'}`}
+                  <div 
+                    className={`w-full px-5 py-4 flex justify-between items-center transition-colors ${expandedCiasSubCats[cat.name] ? 'bg-emerald-50/30' : 'bg-slate-50/30'}`}
                   >
-                    <div className="flex flex-col items-start">
-                      <span className={`text-[10px] font-black tracking-wider text-left pr-4 ${expandedCiasSubCats[cat.name] ? 'text-emerald-600' : 'text-slate-500'}`}>
+                    <button 
+                      onClick={() => toggleCiasSubCat(cat.name)}
+                      className="flex-1 flex flex-col items-start text-left"
+                    >
+                      <span className={`text-[10px] font-black tracking-wider pr-4 ${expandedCiasSubCats[cat.name] ? 'text-emerald-600' : 'text-slate-500'}`}>
                         {cat.name}
                       </span>
                       <span className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Faltam {groupedCias[cat.name].length} hinos</span>
+                    </button>
+                    
+                    <div className="flex items-center gap-3">
+                      {groupedCias[cat.name].length > 0 && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); shareCategory(cat.name, groupedCias[cat.name], true); }}
+                          className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center active:scale-90 transition-transform"
+                          title="Compartilhar categoria"
+                        >
+                          <span className="material-icons text-base">share</span>
+                        </button>
+                      )}
+                      <button onClick={() => toggleCiasSubCat(cat.name)}>
+                        <span className="material-icons text-slate-300 text-lg">
+                          {expandedCiasSubCats[cat.name] ? 'expand_less' : 'expand_more'}
+                        </span>
+                      </button>
                     </div>
-                    <span className="material-icons text-slate-300 text-lg">
-                      {expandedCiasSubCats[cat.name] ? 'expand_less' : 'expand_more'}
-                    </span>
-                  </button>
+                  </div>
                   
                   {expandedCiasSubCats[cat.name] && (
                     <div className="p-3 grid gap-2 animate-fadeIn">
