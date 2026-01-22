@@ -1,31 +1,26 @@
 
-const CACHE_NAME = 'icm-gestao-v12';
+const CACHE_NAME = 'icm-gestao-v16';
 
-// Lista de arquivos vitais (sem eles o app não abre)
-const CRITICAL_ASSETS = [
-  '/',
-  '/index.html',
-  '/index.tsx',
-  '/App.tsx',
-  '/manifest.json',
-  '/db.ts',
-  '/supabase.ts',
-  '/types.ts',
-  '/constants.ts',
-  '/praiseList.ts'
-];
-
-// Componentes e dependências (o app tenta baixar, mas não morre se falhar)
-const SECONDARY_ASSETS = [
-  '/components/ServiceForm.tsx',
-  '/components/HistoryList.tsx',
-  '/components/RankingList.tsx',
-  '/components/BackupRestore.tsx',
-  '/components/UnplayedList.tsx',
-  '/components/WorkerStats.tsx',
-  '/components/WorkerRanking.tsx',
-  '/components/PraiseLearningList.tsx',
-  '/components/AuthForm.tsx',
+// Assets to be cached for offline support
+const ASSETS_TO_CACHE = [
+  'index.html',
+  'index.tsx',
+  'App.tsx',
+  'manifest.json',
+  'db.ts',
+  'supabase.ts',
+  'types.ts',
+  'constants.ts',
+  'praiseList.ts',
+  'components/ServiceForm.tsx',
+  'components/HistoryList.tsx',
+  'components/RankingList.tsx',
+  'components/BackupRestore.tsx',
+  'components/UnplayedList.tsx',
+  'components/WorkerStats.tsx',
+  'components/WorkerRanking.tsx',
+  'components/PraiseLearningList.tsx',
+  'components/AuthForm.tsx',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/icon?family=Material+Icons',
   'https://esm.sh/react@^19.2.3',
@@ -36,15 +31,16 @@ const SECONDARY_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Tenta cachear os críticos primeiro
-      return cache.addAll(CRITICAL_ASSETS).then(() => {
-        // Depois tenta os secundários um por um para não quebrar o processo
-        SECONDARY_ASSETS.forEach(url => {
-          fetch(url).then(res => {
-            if (res.ok) cache.put(url, res);
-          }).catch(() => console.log('Falha não crítica no cache:', url));
-        });
-      });
+      // Use allSettled to be resilient against single file fetch failures
+      return Promise.allSettled(
+        ASSETS_TO_CACHE.map(url => 
+          fetch(url, { mode: url.startsWith('http') ? 'cors' : 'no-cors' })
+            .then(res => {
+              if (res.ok || res.type === 'opaque') return cache.put(url, res);
+            })
+            .catch(() => console.warn('Falha ao cachear:', url))
+        )
+      );
     })
   );
   self.skipWaiting();
@@ -65,28 +61,26 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Nunca cachear chamadas de autenticação do Supabase
-  if (url.host.includes('supabase.co')) return;
+  // Skip Supabase API calls and non-GET requests
+  if (request.method !== 'GET' || url.host.includes('supabase.co')) return;
 
-  // Estratégia: Cache First (Olha no celular primeiro)
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Se achou no cache, entrega na hora (rápido e offline)
-        return cachedResponse;
-      }
+      // Offline-first strategy: Return cached version if available
+      if (cachedResponse) return cachedResponse;
 
-      // Se não tem no cache, tenta baixar
+      // Fallback to network
       return fetch(request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && request.method === 'GET') {
+        // Cache successful responses for future use
+        if (networkResponse && networkResponse.status === 200) {
           const cacheCopy = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheCopy));
         }
         return networkResponse;
       }).catch(() => {
-        // Se falhar a rede E não tiver no cache, e for navegação, manda o index
-        if (request.mode === 'navigate' || (request.method === 'GET' && request.headers.get('accept').includes('text/html'))) {
-          return caches.match('/') || caches.match('/index.html');
+        // Fallback for SPA navigation when completely offline
+        if (request.mode === 'navigate') {
+          return caches.match('index.html');
         }
       });
     })
