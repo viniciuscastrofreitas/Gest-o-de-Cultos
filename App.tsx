@@ -36,7 +36,7 @@ const App: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   };
 
-  const emptyRoles = { gate: '', praise: '', word: '', scripture: '' };
+  const emptyRoles = { gate: '', praise: '', word: '', scripture: '', leader: '' };
 
   const [draft, setDraft] = useState<ServiceDraft>({
     date: getTodayDate(),

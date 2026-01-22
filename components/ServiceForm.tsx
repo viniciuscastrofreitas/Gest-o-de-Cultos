@@ -37,7 +37,14 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   const dateInfo = useMemo(() => {
     const d = new Date(draft.date + 'T12:00:00');
     const dayIndex = d.getDay();
-    return { name: dayOfWeekNames[dayIndex], fullName: fullDayNames[dayIndex], isSunday: dayIndex === 0, isMonday: dayIndex === 1, isWednesday: dayIndex === 3 };
+    return { 
+      name: dayOfWeekNames[dayIndex], 
+      fullName: fullDayNames[dayIndex], 
+      isSunday: dayIndex === 0, 
+      isMonday: dayIndex === 1, 
+      isWednesday: dayIndex === 3,
+      isThursday: dayIndex === 4 
+    };
   }, [draft.date]);
 
   useEffect(() => {
@@ -103,7 +110,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   };
 
   const suggestions = useMemo(() => {
-    // Alterado de 2 para 1 para começar a buscar com um único caractere
     if (inputValue.length < 1) return [];
     const lowerInput = inputValue.toLowerCase();
     return fullSongList
@@ -120,7 +126,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   return (
     <>
-      {/* Modal de Sucesso - CENTRALIZADO (Versão que você gosta) */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
@@ -143,7 +148,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
       <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
         <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-white">
           <div className="space-y-8">
-            {/* DATA E PERÍODO */}
             <div className="grid grid-cols-1 gap-6">
               <div className="flex flex-col items-center">
                 <Label>Data do Culto</Label>
@@ -171,7 +175,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               )}
             </div>
 
-            {/* LOUVORES */}
             <div className="space-y-4 pt-6 border-t border-slate-50">
               <Label>Hinos</Label>
               <div className="flex gap-2">
@@ -225,7 +228,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               </div>
             </div>
 
-            {/* ESCALA */}
             <div className="space-y-5 pt-6 border-t border-slate-50">
               <div className="flex flex-col">
                 <Label>Portão</Label>
@@ -248,7 +250,23 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                 </div>
               )}
 
-              {!dateInfo.isWednesday && (
+              {dateInfo.isThursday && (
+                <div className="flex flex-col">
+                  <Label>Dirigente (Único)</Label>
+                  <FormInput>
+                    <select 
+                      value={draft.roles.leader} 
+                      onChange={e => updateRole('leader', e.target.value)} 
+                      className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none appearance-none cursor-pointer"
+                    >
+                      <option value="">Selecione...</option>
+                      {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </FormInput>
+                </div>
+              )}
+
+              {!dateInfo.isWednesday && !dateInfo.isThursday && (
                 <div className="space-y-5">
                   <div className="flex flex-col">
                     <Label>Louvor</Label>
@@ -271,22 +289,25 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                       </FormInput>
                     </div>
                   )}
+                </div>
+              )}
 
-                  <div className="flex flex-col min-h-[70px] justify-end">
-                    {draft.roles.word === 'TRANSMISSÃO' ? (
-                      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-fadeIn">
-                        <span className="text-lg">📡</span>
-                        <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Transmissão via satélite</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Label>Texto Bíblico</Label>
-                        <FormInput>
-                          <input type="text" value={draft.roles.scripture} onChange={e => updateRole('scripture', e.target.value)} placeholder="Livro / Versículo" className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none" />
-                        </FormInput>
-                      </>
-                    )}
-                  </div>
+              {/* Texto Bíblico visível em todos exceto na transmissão ou quando não houver word */}
+              {!dateInfo.isWednesday && (
+                <div className="flex flex-col min-h-[70px] justify-end">
+                  {draft.roles.word === 'TRANSMISSÃO' ? (
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-fadeIn">
+                      <span className="text-lg">📡</span>
+                      <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Transmissão via satélite</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Label>Texto Bíblico</Label>
+                      <FormInput>
+                        <input type="text" value={draft.roles.scripture} onChange={e => updateRole('scripture', e.target.value)} placeholder="Livro / Versículo" className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none" />
+                      </FormInput>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -312,7 +333,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
         </div>
       </div>
 
-      {/* Bottom Sheet para Hino Recorrente */}
       {pendingSong && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setPendingSong(null)} />

@@ -9,7 +9,7 @@ const CULTOS = [
   { id: 'SEG', label: 'SEGUNDA', fullName: 'SEGUNDA-FEIRA', roles: ['gate', 'praise'] },
   { id: 'TER', label: 'TERÇA', fullName: 'TERÇA-FEIRA', roles: ['gate', 'praise', 'word'] },
   { id: 'QUA', label: 'QUARTA', fullName: 'QUARTA-FEIRA', roles: ['gate'] },
-  { id: 'QUI', label: 'QUINTA', fullName: 'QUINTA-FEIRA', roles: ['gate', 'praise', 'word'] },
+  { id: 'QUI', label: 'QUINTA', fullName: 'QUINTA-FEIRA', roles: ['gate', 'leader'] },
   { id: 'SÁB', label: 'SÁBADO', fullName: 'SÁBADO', roles: ['gate', 'praise', 'word'] },
   { id: 'EBD', label: 'EBD', fullName: 'EBD', roles: ['gate', 'praise', 'word'] },
   { id: 'DOM', label: 'DOM', fullName: 'DOM', roles: ['gate', 'praise', 'word'] }
@@ -21,10 +21,22 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
 
   const officialWorkers = useMemo(() => WORKERS_LIST.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name)), []);
 
-  const getStats = (dayFullName: string, role: 'gate' | 'praise' | 'word') => {
+  const getStats = (dayFullName: string, role: string) => {
     const today = new Date(); today.setHours(12, 0, 0, 0);
     return officialWorkers.map(name => {
-      const filtered = history.filter(r => r.description === dayFullName && r.roles[role] === name).sort((a, b) => b.date.localeCompare(a.date));
+      // Busca a última vez que o obreiro fez essa função ESPECÍFICA (não importa o dia)
+      // OU se ele foi dirigente (que conta como Louvor e Palavra)
+      const filtered = history.filter(r => {
+        const isDirectMatch = r.roles[role as keyof typeof r.roles] === name;
+        const isLeaderMatch = (role === 'praise' || role === 'word') && r.roles.leader === name;
+        
+        // Mantemos a filtragem por tipo de dia para a sugestão de "QUANDO FOI O ÚLTIMO DOMINGO DE FULANO", 
+        // mas injetamos a regra de que líder na quinta conta como louvor/palavra.
+        const isSameDayType = r.description === dayFullName;
+        
+        return isSameDayType && (isDirectMatch || isLeaderMatch);
+      }).sort((a, b) => b.date.localeCompare(a.date));
+
       const lastDate = filtered[0]?.date || null;
       let daysSince = Infinity;
       if (lastDate) daysSince = Math.ceil((today.getTime() - new Date(lastDate + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24));
@@ -35,6 +47,26 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
   const toggleRole = (dayId: string, role: string) => {
     const key = `${dayId}-${role}`;
     setExpandedRoles(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch(role) {
+      case 'gate': return 'Portão';
+      case 'praise': return 'Louvor';
+      case 'word': return 'Palavra';
+      case 'leader': return 'Dirigente';
+      default: return role;
+    }
+  };
+
+  const getRoleIcon = (role: string) => {
+    switch(role) {
+      case 'gate': return 'door_front';
+      case 'praise': return 'music_note';
+      case 'word': return 'record_voice_over';
+      case 'leader': return 'stars';
+      default: return 'person';
+    }
   };
 
   return (
@@ -59,13 +91,13 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
               <div className="p-6 space-y-6 animate-fadeIn">
                 {culto.roles.map(role => {
                   const isRoleExpanded = expandedRoles[`${culto.id}-${role}`];
-                  const stats = getStats(culto.fullName, role as any);
+                  const stats = getStats(culto.fullName, role);
                   return (
                     <div key={role} className="border border-slate-50 rounded-2xl overflow-hidden">
                       <button onClick={() => toggleRole(culto.id, role)} className="w-full px-4 py-3 flex items-center justify-between bg-white hover:bg-slate-50">
                         <div className="flex items-center gap-2">
-                          <span className="material-icons text-indigo-400 text-sm">{role === 'gate' ? 'door_front' : role === 'praise' ? 'music_note' : 'record_voice_over'}</span>
-                          <span className="font-black text-[10px] text-slate-500 uppercase tracking-widest">{role === 'gate' ? 'Portão' : role === 'praise' ? 'Louvor' : 'Palavra'}</span>
+                          <span className="material-icons text-indigo-400 text-sm">{getRoleIcon(role)}</span>
+                          <span className="font-black text-[10px] text-slate-500 uppercase tracking-widest">{getRoleLabel(role)}</span>
                         </div>
                         <span className={`material-icons text-slate-200 text-sm transition-transform ${isRoleExpanded ? 'rotate-180' : ''}`}>keyboard_arrow_down</span>
                       </button>
@@ -76,7 +108,7 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
                               <span className="text-xs font-bold text-slate-700">{worker.name}</span>
                               <div className="text-right">
                                 <span className={`text-[9px] font-black uppercase ${worker.daysSince === Infinity ? 'text-emerald-500' : 'text-indigo-400'}`}>
-                                  {worker.daysSince === Infinity ? 'Ainda não executou função' : `${worker.daysSince}d`}
+                                  {worker.daysSince === Infinity ? 'Inédito' : `${worker.daysSince}d`}
                                 </span>
                               </div>
                             </div>

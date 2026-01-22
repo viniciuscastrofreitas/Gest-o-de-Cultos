@@ -25,12 +25,26 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
 
     history.forEach(r => {
       const event = { date: r.date, description: r.description };
-      if (r.roles.gate && data[r.roles.gate]) data[r.roles.gate].gate.push(event);
-      if (r.roles.praise && data[r.roles.praise]) data[r.roles.praise].praise.push(event);
-      if (r.roles.word && data[r.roles.word]) data[r.roles.word].word.push(event);
+      
+      // Portão (Sempre único)
+      if (r.roles.gate && data[r.roles.gate]) {
+        data[r.roles.gate].gate.push(event);
+      }
+
+      // Se for Quinta-feira (Dirigente), conta como Louvor E Palavra
+      if (r.roles.leader && data[r.roles.leader]) {
+        const leaderEvent = { ...event, description: `${event.description} (Dirigente)` };
+        data[r.roles.leader].praise.push(leaderEvent);
+        data[r.roles.leader].word.push(leaderEvent);
+      } else {
+        // Dias normais
+        if (r.roles.praise && data[r.roles.praise]) data[r.roles.praise].praise.push(event);
+        if (r.roles.word && data[r.roles.word]) data[r.roles.word].word.push(event);
+      }
     });
 
     Object.keys(data).forEach(name => {
+      // O total é a soma de todas as atuações computadas
       data[name].total = data[name].gate.length + data[name].praise.length + data[name].word.length;
       data[name].gate.sort((a, b) => b.date.localeCompare(a.date));
       data[name].praise.sort((a, b) => b.date.localeCompare(a.date));
@@ -75,7 +89,7 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
                   {worker.total} ATOS TOTAIS
                 </div>
               </div>
-              <div className="p-5 flex gap-3 bg-slate-50/30">
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/30">
                 <StatBox label="Portão" count={worker.gate.length} icon="door_front" onClick={() => setModalData({ worker: worker.name, role: 'Portão', events: worker.gate })} />
                 <StatBox label="Louvor" count={worker.praise.length} icon="music_note" onClick={() => setModalData({ worker: worker.name, role: 'Louvor', events: worker.praise })} />
                 <StatBox label="Palavra" count={worker.word.length} icon="record_voice_over" onClick={() => setModalData({ worker: worker.name, role: 'Palavra', events: worker.word })} />
@@ -85,12 +99,10 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
         </div>
       </div>
 
-      {/* Slide-over Drawer para Histórico de Obreiro - Ajustado para mobile */}
       {modalData && (
         <div className="fixed inset-0 z-[6000] flex justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setModalData(null)} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slideInRight">
-            {/* Cabeçalho do Drawer com padding extra no mobile (pt-24) */}
             <div className="bg-[#1a1c3d] pt-24 pb-10 px-10 md:pt-12 md:pb-12 md:px-10 relative shrink-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="material-icons text-indigo-400 text-sm">history</span>
@@ -98,7 +110,6 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
               </div>
               <h3 className="text-white font-black text-2xl uppercase tracking-tighter leading-tight">{modalData.worker}</h3>
               
-              {/* Opção e quantidade - Movidos mais para baixo */}
               <div className="mt-4 flex flex-wrap gap-2">
                 <div className="bg-white/10 px-3 py-1.5 rounded-xl inline-flex items-center gap-2 border border-white/5">
                   <span className="text-white/80 font-black text-[10px] uppercase tracking-widest">{modalData.role}</span>
@@ -108,7 +119,6 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
                 </div>
               </div>
 
-              {/* Botão fechar ajustado para não conflitar com menu superior */}
               <button 
                 onClick={() => setModalData(null)} 
                 className="absolute top-20 md:top-8 right-8 w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white/40 active:scale-90 transition-transform hover:bg-white/20"

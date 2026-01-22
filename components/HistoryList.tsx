@@ -28,25 +28,23 @@ const HistoryList: React.FC<Props> = ({
   const groupedHistory = useMemo(() => {
     let filtered = [...history];
 
-    // FILTRO ESPECÍFICO DO RANKING
     if (externalFilter) {
       filtered = filtered.filter(r => 
         r.roles[externalFilter.role as keyof typeof r.roles] === externalFilter.worker
       );
     }
 
-    // Busca por texto (Filtro secundário)
     if (searchTerm) {
       filtered = filtered.filter(r => 
         r.date.includes(searchTerm) || 
         r.roles?.word?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         r.roles?.praise?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         r.roles?.gate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        r.roles?.leader?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         r.songs.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
-    // Ordenação (Mais recente primeiro)
     filtered.sort((a, b) => b.date.localeCompare(a.date));
 
     const groups: Record<string, ServiceRecord[]> = {};
@@ -62,13 +60,13 @@ const HistoryList: React.FC<Props> = ({
   const roleLabels: Record<string, string> = {
     gate: 'PORTÃO',
     praise: 'LOUVOR',
-    word: 'PALAVRA'
+    word: 'PALAVRA',
+    leader: 'DIRIGENTE'
   };
 
   const InfoTag = ({ label, value, icon, roleId }: { label: string, value?: string, icon: string, roleId: string }) => {
     if (!value) return null;
     
-    // Identifica se esta tag deve ser destacada pelo filtro ativo
     const isHighlighted = externalFilter?.role === roleId;
 
     return (
@@ -91,6 +89,7 @@ const HistoryList: React.FC<Props> = ({
     const dayName = d.toLocaleDateString('pt-BR', { weekday: 'long' }).toUpperCase();
     const dateFormatted = d.toLocaleDateString('pt-BR');
     const isWednesday = d.getDay() === 3;
+    const isThursday = d.getDay() === 4;
 
     let msg = `RELATÓRIO DE CULTO\n`;
     msg += `ICM SANTO ANTÔNIO II\n\n`;
@@ -99,6 +98,10 @@ const HistoryList: React.FC<Props> = ({
     if (isWednesday) {
       msg += `*CULTO DIRIGIDO PELO GRUPO DE SENHORAS*\n`;
       if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
+    } else if (isThursday) {
+      if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
+      if (r.roles.leader) msg += `> Dirigente: ${r.roles.leader}\n`;
+      if (r.roles.scripture) msg += `> Texto: ${r.roles.scripture}\n`;
     } else {
       if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
       if (r.roles.praise) msg += `> Louvor: ${r.roles.praise}\n`;
@@ -126,7 +129,6 @@ const HistoryList: React.FC<Props> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-10 px-1">
-      {/* HEADER DE BUSCA */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <div className="flex-1 bg-white rounded-full flex items-center px-6 py-4 shadow-xl border border-slate-50">
@@ -144,7 +146,6 @@ const HistoryList: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* BANNER DE FILTRO ATIVO */}
         {externalFilter && (
           <div className="bg-[#1a1c3d] rounded-3xl p-5 shadow-2xl animate-scaleUp border border-white/5 relative overflow-hidden">
             <div className="absolute right-0 top-0 opacity-10">
@@ -175,7 +176,6 @@ const HistoryList: React.FC<Props> = ({
         )}
       </div>
 
-      {/* LISTA AGRUPADA POR MÊS */}
       {(Object.entries(groupedHistory) as [string, ServiceRecord[]][]).map(([month, records]) => (
         <div key={month} className="space-y-4">
           <div className="px-4 flex justify-between items-center">
@@ -184,58 +184,67 @@ const HistoryList: React.FC<Props> = ({
           </div>
           
           <div className="grid gap-4">
-            {records.map(record => (
-              <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100 animate-fadeIn hover:shadow-md transition-shadow">
-                <div className="flex flex-col gap-6">
-                  {/* Cabeçalho do Card */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
-                        <span className="text-[10px] font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
+            {records.map(record => {
+              const d = new Date(record.date + 'T12:00:00');
+              const isThursday = d.getDay() === 4;
+              
+              return (
+                <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100 animate-fadeIn hover:shadow-md transition-shadow">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
+                          <span className="text-[10px] font-black text-indigo-600 leading-none">{d.getDate()}</span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[d.getDay()]}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-black text-[#1a1c3d] uppercase text-sm tracking-tight truncate">{record.description}</h4>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{record.songs.length} Louvores</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-black text-[#1a1c3d] uppercase text-sm tracking-tight truncate">{record.description}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{record.songs.length} Louvores</p>
+
+                      <div className="flex items-center gap-2 justify-end">
+                        <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(formatServiceMessage(record))}`)} className="w-10 h-10 flex items-center justify-center text-emerald-500 bg-emerald-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">share</span></button>
+                        <button onClick={() => onEdit(record)} className="w-10 h-10 flex items-center justify-center text-indigo-500 bg-indigo-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
+                        <button onClick={() => setItemToDelete(record.id)} className="w-10 h-10 flex items-center justify-center text-rose-300 hover:text-rose-500 bg-rose-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(formatServiceMessage(record))}`)} className="w-10 h-10 flex items-center justify-center text-emerald-500 bg-emerald-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">share</span></button>
-                      <button onClick={() => onEdit(record)} className="w-10 h-10 flex items-center justify-center text-indigo-500 bg-indigo-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
-                      <button onClick={() => setItemToDelete(record.id)} className="w-10 h-10 flex items-center justify-center text-rose-300 hover:text-rose-500 bg-rose-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
+                    <div className={`grid ${isThursday ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'} gap-3 border-t border-slate-50 pt-5`}>
+                      <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
+                      
+                      {isThursday ? (
+                        <InfoTag label="Dirigente" value={record.roles.leader} icon="stars" roleId="leader" />
+                      ) : (
+                        <>
+                          <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
+                          <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
+                        </>
+                      )}
+                      
+                      <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
                     </div>
+
+                    {record.songs.length > 0 && (
+                      <div className="pt-4 border-t border-slate-50">
+                        <div className="flex flex-wrap gap-2">
+                          {record.songs.map((song, idx) => (
+                            <div key={idx} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
+                              <span className="text-[8px] font-black text-indigo-300">#{idx + 1}</span>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase truncate max-w-[150px]">{song}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Funções do Culto */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-slate-50 pt-5">
-                    <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
-                    <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
-                    <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
-                    <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
-                  </div>
-
-                  {/* Hinos */}
-                  {record.songs.length > 0 && (
-                    <div className="pt-4 border-t border-slate-50">
-                      <div className="flex flex-wrap gap-2">
-                        {record.songs.map((song, idx) => (
-                          <div key={idx} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
-                            <span className="text-[8px] font-black text-indigo-300">#{idx + 1}</span>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase truncate max-w-[150px]">{song}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
 
-      {/* MODAL MÊS */}
       {isMonthPickerOpen && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
           <div className="absolute inset-0 bg-[#1a1c3d]/80 backdrop-blur-sm animate-fadeIn" onClick={() => setIsMonthPickerOpen(false)} />
@@ -259,7 +268,6 @@ const HistoryList: React.FC<Props> = ({
         </div>
       )}
 
-      {/* DELETE MODAL */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setItemToDelete(null)} />
