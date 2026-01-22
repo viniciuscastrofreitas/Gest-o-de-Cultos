@@ -12,6 +12,7 @@ import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
 import { initDB, saveData, loadData } from './db';
 import { supabase } from './supabase';
+import AuthForm from './components/AuthForm';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'workers' | 'suggestions' | 'praise-ranking' | 'unplayed' | 'learning' | 'settings'>('new');
@@ -24,9 +25,10 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local'>('local');
+  const [showLoginModal, setShowLoginModal] = useState(false);
   
-  // Flag crucial para evitar sobrescrever a nuvem com dados vazios no início
-  const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
+  // Controle de primeira carga da nuvem
+  const [isReadyForCloudSync, setIsReadyForCloudSync] = useState(false);
 
   const syncTimeoutRef = useRef<number | null>(null);
 
@@ -44,39 +46,57 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
-  // 1. Inicialização e Monitoramento de Auth
+  // 1. Inicialização do Sistema (Local e Auth)
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) setHasCheckedCloud(false); // Reset ao deslogar
-    });
-
     const setup = async () => {
       try {
         await initDB();
-        const data = await loadData();
-        if (data) {
-          if (data.history) setHistory(data.history);
-          if (data.customSongs) setCustomSongs(data.customSongs);
-          if (data.learningList) setLearningList(data.learningList);
-          if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
+        const localData = await loadData();
+        
+        if (localData) {
+          if (localData.history) setHistory(localData.history);
+          if (localData.customSongs) setCustomSongs(localData.customSongs);
+          if (localData.learningList) setLearningList(localData.learningList);
+          if (localData.draft) setDraft({ ...localData.draft, date: getTodayDate() });
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          const { data: cloudData } = await supabase
+            .from('user_data')
+            .select('json_data')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+          if (cloudData?.json_data) {
+            const cloud = cloudData.json_data;
+            if (localData?.history?.length === 0 && cloud.history?.length > 0) {
+              setHistory(cloud.history);
+              setCustomSongs(cloud.customSongs || []);
+              setLearningList(cloud.learningList || []);
+            }
+          }
         }
       } catch (e) {
-        console.error("Erro no DB", e);
+        console.error("Erro no setup inicial:", e);
       } finally {
         setIsLoading(false);
+        setIsReadyForCloudSync(true);
       }
     };
     setup();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -85,71 +105,39 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // 2. Auto-Restore ao logar (Proteção contra perda de dados)
-  useEffect(() => {
-    if (user && !isLoading && !hasCheckedCloud) {
-      const autoRestore = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('user_data')
-            .select('json_data')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-          if (error) throw error;
-
-          if (data?.json_data) {
-            const cloud = data.json_data;
-            // Só restaura se o local estiver vazio para não causar confusão,
-            // ou se o usuário acabou de logar em um dispositivo limpo.
-            if (history.length === 0) {
-              setHistory(cloud.history || []);
-              setCustomSongs(cloud.customSongs || []);
-              setLearningList(cloud.learningList || []);
-            }
-          }
-        } catch (e) {
-          console.error("Erro ao verificar nuvem:", e);
-        } finally {
-          setHasCheckedCloud(true); // Agora é seguro sincronizar local -> nuvem
-          setSyncStatus('synced');
-        }
-      };
-      autoRestore();
-    }
-  }, [user, isLoading, hasCheckedCloud]);
-
-  // 3. Auto-Sync Controlado
+  // 2. Persistência Local (IndexedDB)
   useEffect(() => {
     if (isLoading) return;
-
-    // Salva Localmente Sempre
     saveData({ history, customSongs, draft, learningList });
+  }, [history, customSongs, draft, learningList, isLoading]);
 
-    // Sincronização Cloud só ocorre após a verificação inicial (hasCheckedCloud)
-    if (user && !isOffline && hasCheckedCloud) {
-      setSyncStatus('syncing');
+  // 3. Auto-Sync Cloud (Supabase)
+  useEffect(() => {
+    if (!isReadyForCloudSync || !user || isOffline) return;
+
+    setSyncStatus('syncing');
+    if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+    
+    syncTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const { error } = await supabase.from('user_data').upsert({ 
+          user_id: user.id, 
+          json_data: { history, customSongs, learningList },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        
+        if (error) throw error;
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error("Falha no Auto-Sync Cloud:", e);
+        setSyncStatus('local');
+      }
+    }, 2000);
+
+    return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
-      
-      syncTimeoutRef.current = window.setTimeout(async () => {
-        try {
-          const { error } = await supabase.from('user_data').upsert({ 
-            user_id: user.id, 
-            json_data: { history, customSongs, learningList },
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id' });
-          
-          if (error) throw error;
-          setSyncStatus('synced');
-        } catch (e) {
-          console.error("Falha no Auto-Sync:", e);
-          setSyncStatus('local'); // Indica que não está garantido na nuvem
-        }
-      }, 3000); // 3 segundos de delay para poupar bateria/dados
-    } else if (!user) {
-      setSyncStatus('local');
-    }
-  }, [history, customSongs, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
+    };
+  }, [history, customSongs, learningList, user, isOffline, isReadyForCloudSync]);
 
   const fullSongList = useMemo(() => {
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
@@ -209,7 +197,7 @@ const App: React.FC = () => {
              {syncStatus === 'synced' ? 'cloud_done' : syncStatus === 'syncing' ? 'sync' : 'cloud_off'}
            </span>
            <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">
-             {syncStatus === 'synced' ? 'Nuvem OK' : syncStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
+             {syncStatus === 'synced' ? 'Nuvem OK' : syncStatus === 'syncing' ? 'Salvando...' : 'Local'}
            </span>
         </div>
         <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
@@ -222,20 +210,42 @@ const App: React.FC = () => {
   );
 
   const UserProfile = () => {
-    if (!user) return null;
+    if (!user) {
+      return (
+        <div className="px-10 py-6 border-b border-white/5 animate-fadeIn">
+          <button 
+            onClick={() => setShowLoginModal(true)}
+            className="w-full py-4 bg-amber-400 text-[#1a1c3d] rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+          >
+            <span className="material-icons text-sm">login</span>
+            Entrar / Sincronizar
+          </button>
+        </div>
+      );
+    }
     return (
-      <div className="px-10 py-6 border-t border-white/5 flex items-center gap-4">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center overflow-hidden border border-white/10">
+      <div className="px-10 py-6 border-b border-white/5 flex items-center gap-4 bg-white/5 animate-fadeIn">
+        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center overflow-hidden border border-white/10 shrink-0">
           {user.user_metadata?.avatar_url ? (
             <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
-            <span className="material-icons text-white text-xl">person</span>
+            <span className="material-icons text-[#1a1c3d] text-xl">person</span>
           )}
         </div>
-        <div className="flex flex-col min-w-0">
+        <div className="flex flex-col min-w-0 flex-1">
           <span className="text-white font-black text-[10px] uppercase truncate">{user.user_metadata?.full_name || user.email}</span>
-          <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Sincronizado</span>
+          <div className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Sincronizado</span>
+          </div>
         </div>
+        <button 
+          onClick={() => supabase.auth.signOut()}
+          className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-500/20 transition-all"
+          title="Sair"
+        >
+          <span className="material-icons text-sm">logout</span>
+        </button>
       </div>
     );
   };
@@ -244,11 +254,16 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
+      {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-96 bg-[#1a1c3d] flex-col sticky top-0 h-screen shadow-2xl z-[150]">
         <div className="p-12 border-b border-white/5">
           <AppBrand />
         </div>
-        <nav className="flex-1 py-10 overflow-y-auto custom-scrollbar">
+        
+        {/* User Profile no topo no Desktop */}
+        <UserProfile />
+
+        <nav className="flex-1 py-6 overflow-y-auto custom-scrollbar">
           {menuItems.map(item => (
             <button 
               key={item.id}
@@ -260,9 +275,9 @@ const App: React.FC = () => {
             </button>
           ))}
         </nav>
-        <UserProfile />
       </aside>
 
+      {/* Mobile Header */}
       <header className="md:hidden bg-[#1a1c3d] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl rounded-b-[2rem]">
         <AppBrand />
         <button onClick={() => setIsMobileMenuOpen(true)} className="p-4 bg-white/10 rounded-2xl active:scale-90 transition-transform">
@@ -270,15 +285,20 @@ const App: React.FC = () => {
         </button>
       </header>
 
+      {/* Mobile Drawer */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[300] md:hidden">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-lg" onClick={() => setIsMobileMenuOpen(false)}></div>
-          <div className="absolute top-0 right-0 bottom-0 w-[85%] bg-[#1a1c3d] shadow-2xl flex flex-col animate-fadeIn border-l border-white/5">
+          <div className="absolute top-0 right-0 bottom-0 w-[85%] bg-[#1a1c3d] shadow-2xl flex flex-col animate-slideInRight border-l border-white/5">
             <div className="p-10 flex justify-between items-center border-b border-white/5">
               <span className="text-white/40 font-black text-xs tracking-widest uppercase">Navegação Principal</span>
               <button onClick={() => setIsMobileMenuOpen(false)} className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-white/40"><span className="material-icons">close</span></button>
             </div>
-            <nav className="flex-1 py-6 overflow-y-auto">
+            
+            {/* User Profile no topo no Mobile Drawer */}
+            <UserProfile />
+
+            <nav className="flex-1 py-4 overflow-y-auto">
               {menuItems.map(item => (
                 <button 
                   key={item.id}
@@ -290,7 +310,29 @@ const App: React.FC = () => {
                 </button>
               ))}
             </nav>
-            <UserProfile />
+          </div>
+        </div>
+      )}
+
+      {/* Global Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl animate-fadeIn" onClick={() => setShowLoginModal(false)} />
+          <div className="relative bg-white/5 border border-white/10 rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp">
+            <div className="flex flex-col items-center text-center mb-8">
+              <div className="w-20 h-20 bg-amber-400 rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-amber-400/20">
+                <span className="material-icons text-4xl text-[#1a1c3d]">cloud_sync</span>
+              </div>
+              <h2 className="text-white font-black text-2xl uppercase tracking-tighter">Sincronizar</h2>
+              <p className="text-white/40 font-bold text-[10px] uppercase tracking-widest mt-2 leading-relaxed">Acesse sua conta para manter seus dados seguros em qualquer lugar.</p>
+            </div>
+            <AuthForm onSuccess={() => setShowLoginModal(false)} />
+            <button 
+              onClick={() => setShowLoginModal(false)}
+              className="w-full mt-6 py-4 text-white/20 font-black text-[10px] uppercase tracking-widest hover:text-white transition-all"
+            >
+              FECHAR
+            </button>
           </div>
         </div>
       )}

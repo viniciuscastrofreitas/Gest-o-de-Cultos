@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'icm-gestao-v7';
+const CACHE_NAME = 'icm-gestao-v8';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -51,6 +51,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // IGNORA CACHE PARA SUPABASE (Autenticação e Sincronização)
+  // Isso garante que o login e a renovação de tokens nunca sejam bloqueados pelo Service Worker
+  if (url.host.includes('supabase.co')) {
+    return;
+  }
 
   if (url.host === 'esm.sh' || url.host.includes('fonts.') || url.host.includes('cdn.tailwindcss.com') || url.host.includes('flaticon.com')) {
     event.respondWith(
