@@ -26,6 +26,9 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local'>('local');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showCloudRestoreConfirm, setShowCloudRestoreConfirm] = useState(false);
+  const [showRestoreSuccess, setShowRestoreSuccess] = useState(false);
+  const [showSyncSuccess, setShowSyncSuccess] = useState(false);
   const [isCloudActionLoading, setIsCloudActionLoading] = useState(false);
   
   const [isReadyForCloudSync, setIsReadyForCloudSync] = useState(false);
@@ -45,7 +48,6 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
-  // Listener de conexão global
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -61,7 +63,6 @@ const App: React.FC = () => {
           if (localData.history) setHistory(localData.history);
           if (localData.customSongs) setCustomSongs(localData.customSongs);
           if (localData.learningList) setLearningList(localData.learningList);
-          // Carrega rascunho local se existir
           if (localData.draft) setDraft(localData.draft);
         }
 
@@ -78,7 +79,6 @@ const App: React.FC = () => {
 
           if (cloudData?.json_data) {
             const cloud = cloudData.json_data;
-            // Só substitui o rascunho se o local estiver vazio para evitar perda de dados imediatos
             if (localData?.history?.length === 0 && cloud.history?.length > 0) {
               setHistory(cloud.history || []);
               setCustomSongs(cloud.customSongs || []);
@@ -107,15 +107,12 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Persistência Local (IndexedDB) - Sempre salva rascunhos e histórico localmente
   useEffect(() => {
     if (isLoading) return;
     saveData({ history, customSongs, draft, learningList });
   }, [history, customSongs, draft, learningList, isLoading]);
 
-  // Sincronização em Nuvem (Supabase) - Refinado para ser mais eficaz ao reconectar
   useEffect(() => {
-    // Se não estiver pronto, não tiver usuário ou estiver offline, mantém status 'local'
     if (!isReadyForCloudSync || !user || isOffline) {
       if (user && isOffline) setSyncStatus('local');
       return;
@@ -124,7 +121,6 @@ const App: React.FC = () => {
     setSyncStatus('syncing');
     if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
     
-    // O rascunho (draft) agora é incluído no sync para persistência entre dispositivos e segurança
     syncTimeoutRef.current = window.setTimeout(async () => {
       try {
         const { error } = await supabase.from('user_data').upsert({ 
@@ -136,10 +132,9 @@ const App: React.FC = () => {
         if (error) throw error;
         setSyncStatus('synced');
       } catch (e) {
-        console.error("Falha no Auto-Sync Cloud:", e);
         setSyncStatus('local');
       }
-    }, 2000); // Reduzido para 2s para sync mais ágil
+    }, 2000);
 
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
@@ -157,17 +152,21 @@ const App: React.FC = () => {
       }, { onConflict: 'user_id' });
       if (error) throw error;
       setSyncStatus('synced');
-      alert("Dados enviados para a nuvem com sucesso!");
+      setShowSyncSuccess(true);
     } catch (e) {
-      alert("Erro ao sincronizar dados.");
+      console.error(e);
     } finally {
       setIsCloudActionLoading(false);
     }
   };
 
-  const handleManualDownload = async () => {
+  const handleManualDownload = () => {
     if (!user || isOffline) return;
-    if (!window.confirm("Isso substituirá seus dados locais pela versão da nuvem (incluindo rascunhos). Continuar?")) return;
+    setShowCloudRestoreConfirm(true);
+  };
+
+  const executeManualDownload = async () => {
+    setShowCloudRestoreConfirm(false);
     setIsCloudActionLoading(true);
     try {
       const { data } = await supabase.from('user_data').select('json_data').eq('user_id', user.id).maybeSingle();
@@ -176,12 +175,10 @@ const App: React.FC = () => {
         setCustomSongs(data.json_data.customSongs || []);
         setLearningList(data.json_data.learningList || []);
         if (data.json_data.draft) setDraft(data.json_data.draft);
-        alert("Dados recuperados da nuvem!");
-      } else {
-        alert("Nenhum dado encontrado na nuvem.");
+        setShowRestoreSuccess(true);
       }
     } catch (e) {
-      alert("Erro ao baixar dados.");
+      console.error(e);
     } finally {
       setIsCloudActionLoading(false);
     }
@@ -214,7 +211,6 @@ const App: React.FC = () => {
     } else {
       setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
     }
-    // Reseta o rascunho para um estado inicial após salvar
     setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles } });
   };
 
@@ -392,6 +388,73 @@ const App: React.FC = () => {
               className="w-full mt-6 py-4 text-white/20 font-black text-[10px] uppercase tracking-widest hover:text-white transition-all"
             >
               FECHAR
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCloudRestoreConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl animate-fadeIn" onClick={() => setShowCloudRestoreConfirm(false)} />
+          <div className="relative bg-white border border-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">
+            <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-amber-500 shadow-xl shadow-amber-400/10">
+              <span className="material-icons text-4xl">cloud_download</span>
+            </div>
+            <h2 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter">Restaurar Nuvem?</h2>
+            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-4 leading-relaxed px-4">
+              Isso substituirá seus dados locais pela versão da nuvem (incluindo rascunhos). <span className="text-rose-500 font-black">Esta ação é definitiva.</span>
+            </p>
+            <div className="mt-10 space-y-3">
+              <button 
+                onClick={executeManualDownload}
+                className="w-full py-5 bg-[#1a1c3d] text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+              >
+                SIM, RESTAURAR AGORA
+              </button>
+              <button 
+                onClick={() => setShowCloudRestoreConfirm(false)}
+                className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-[#1a1c3d] transition-all"
+              >
+                CANCELAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRestoreSuccess && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowRestoreSuccess(false)} />
+          <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
+            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
+              <span className="material-icons text-4xl">cloud_done</span>
+            </div>
+            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Dados Recuperados!</h3>
+            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Sincronização concluída com sucesso.</p>
+            <button 
+              onClick={() => setShowRestoreSuccess(false)} 
+              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
+            >
+              ENTENDIDO
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showSyncSuccess && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSyncSuccess(false)} />
+          <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
+            <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 text-indigo-500">
+              <span className="material-icons text-4xl">cloud_done</span>
+            </div>
+            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Sincronizado!</h3>
+            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Seus dados foram salvos na nuvem.</p>
+            <button 
+              onClick={() => setShowSyncSuccess(false)} 
+              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
+            >
+              EXCELENTE
             </button>
           </div>
         </div>
