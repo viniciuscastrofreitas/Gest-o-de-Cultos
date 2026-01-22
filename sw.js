@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'icm-gestao-v8';
+const CACHE_NAME = 'icm-gestao-v10'; // Versão incrementada para forçar atualização
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -10,6 +10,16 @@ const PRECACHE_ASSETS = [
   '/praiseList.ts',
   '/db.ts',
   '/App.tsx',
+  '/supabase.ts',
+  '/components/ServiceForm.tsx',
+  '/components/HistoryList.tsx',
+  '/components/RankingList.tsx',
+  '/components/BackupRestore.tsx',
+  '/components/UnplayedList.tsx',
+  '/components/WorkerStats.tsx',
+  '/components/WorkerRanking.tsx',
+  '/components/PraiseLearningList.tsx',
+  '/components/AuthForm.tsx',
   'https://cdn-icons-png.flaticon.com/512/1672/1672225.png',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/icon?family=Material+Icons',
@@ -21,17 +31,17 @@ const ESM_DEPS = [
   'https://esm.sh/react@^19.2.3',
   'https://esm.sh/react-dom@^19.2.3',
   'https://esm.sh/react@^19.2.3/',
-  'https://esm.sh/react-dom@^19.2.3/'
+  'https://esm.sh/react-dom@^19.2.3/',
+  'https://esm.sh/@supabase/supabase-js@2.45.4'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return Promise.allSettled(
-        [...PRECACHE_ASSETS, ...ESM_DEPS].map(url => 
-          cache.add(url).catch(err => console.warn(`Falha no cache: ${url}`))
-        )
-      );
+      // Usamos addAll em vez de Map para garantir que o cache seja fatal se os itens essenciais falharem
+      return cache.addAll([...PRECACHE_ASSETS, ...ESM_DEPS]).catch(err => {
+        console.warn('Alguns recursos não puderam ser cacheados durante a instalação:', err);
+      });
     })
   );
   self.skipWaiting();
@@ -52,12 +62,12 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // IGNORA CACHE PARA SUPABASE (Autenticação e Sincronização)
-  // Isso garante que o login e a renovação de tokens nunca sejam bloqueados pelo Service Worker
+  // IGNORA CACHE PARA SUPABASE (Autenticação e Sincronização em tempo real)
   if (url.host.includes('supabase.co')) {
     return;
   }
 
+  // Estratégia Cache First para dependências externas e fontes
   if (url.host === 'esm.sh' || url.host.includes('fonts.') || url.host.includes('cdn.tailwindcss.com') || url.host.includes('flaticon.com')) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
@@ -68,12 +78,13 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheCopy));
           }
           return networkResponse;
-        }).catch(() => new Response("Offline", { status: 503 }));
+        });
       })
     );
     return;
   }
 
+  // Estratégia Network-First com fallback para Cache para os arquivos do App
   event.respondWith(
     fetch(request)
       .then((networkResponse) => {
@@ -86,7 +97,10 @@ self.addEventListener('fetch', (event) => {
       .catch(() => {
         return caches.match(request).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
-          if (request.mode === 'navigate') return caches.match('/index.html') || caches.match('/');
+          // Se for uma navegação (abrir o app), retorna o index.html do cache
+          if (request.mode === 'navigate') {
+            return caches.match('/index.html') || caches.match('/');
+          }
           return new Response("Offline", { status: 503 });
         });
       })

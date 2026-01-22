@@ -24,17 +24,16 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
   const getStats = (dayFullName: string, role: string) => {
     const today = new Date(); today.setHours(12, 0, 0, 0);
     return officialWorkers.map(name => {
-      // Busca a última vez que o obreiro fez essa função ESPECÍFICA (não importa o dia)
-      // OU se ele foi dirigente (que conta como Louvor e Palavra)
+      // Busca recência específica para o dia da semana atual do card
       const filtered = history.filter(r => {
+        const isSameDayType = r.description === dayFullName;
+        if (!isSameDayType) return false;
+
         const isDirectMatch = r.roles[role as keyof typeof r.roles] === name;
+        // Se estivermos sugerindo Louvor ou Palavra, devemos considerar se ele foi Dirigente (leader)
         const isLeaderMatch = (role === 'praise' || role === 'word') && r.roles.leader === name;
         
-        // Mantemos a filtragem por tipo de dia para a sugestão de "QUANDO FOI O ÚLTIMO DOMINGO DE FULANO", 
-        // mas injetamos a regra de que líder na quinta conta como louvor/palavra.
-        const isSameDayType = r.description === dayFullName;
-        
-        return isSameDayType && (isDirectMatch || isLeaderMatch);
+        return isDirectMatch || isLeaderMatch;
       }).sort((a, b) => b.date.localeCompare(a.date));
 
       const lastDate = filtered[0]?.date || null;

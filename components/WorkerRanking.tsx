@@ -31,7 +31,7 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
         data[r.roles.gate].gate.push(event);
       }
 
-      // Se for Quinta-feira (Dirigente), conta como Louvor E Palavra
+      // Se for Quinta-feira (Dirigente), conta como Louvor E Palavra para o ranking
       if (r.roles.leader && data[r.roles.leader]) {
         const leaderEvent = { ...event, description: `${event.description} (Dirigente)` };
         data[r.roles.leader].praise.push(leaderEvent);
@@ -44,7 +44,7 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
     });
 
     Object.keys(data).forEach(name => {
-      // O total é a soma de todas as atuações computadas
+      // O total é a soma de todas as atuações computadas (Dirigente conta 2 pontos: 1 Louvor + 1 Palavra)
       data[name].total = data[name].gate.length + data[name].praise.length + data[name].word.length;
       data[name].gate.sort((a, b) => b.date.localeCompare(a.date));
       data[name].praise.sort((a, b) => b.date.localeCompare(a.date));
