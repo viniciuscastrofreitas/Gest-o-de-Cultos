@@ -71,7 +71,7 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
   return (
     <div className="space-y-6 animate-fadeIn pb-10">
       <div className="px-2">
-        <h2 className="text-2xl font-black text-slate-800">Sugestão de Escala</h2>
+        <h2 className="text-2xl font-black text-white">Sugestão de Escala</h2>
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Quem realizou a função há mais tempo</p>
       </div>
 
@@ -80,7 +80,7 @@ const WorkerStats: React.FC<Props> = ({ history }) => {
           <div key={culto.id} className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
             <button onClick={() => setExpandedDay(expandedDay === culto.id ? null : culto.id)} className="w-full px-6 py-5 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[10px] shadow-sm ${expandedDay === culto.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>{culto.id}</div>
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[10px] shadow-sm transition-colors ${expandedDay === culto.id ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 text-slate-400'}`}>{culto.id}</div>
                 <span className="font-black text-slate-700 text-sm tracking-wide">{culto.fullName}</span>
               </div>
               <span className={`material-icons text-slate-300 transition-transform ${expandedDay === culto.id ? 'rotate-180' : ''}`}>expand_more</span>

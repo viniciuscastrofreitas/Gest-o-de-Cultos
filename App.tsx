@@ -319,7 +319,7 @@ const App: React.FC = () => {
   if (isLoading) return <div className="min-h-screen bg-[#1a1c3d] flex flex-col items-center justify-center text-white p-10"><img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" className="w-20 h-20 animate-bounce mb-6" /><p className="font-black tracking-widest text-sm animate-pulse">CARREGANDO SISTEMA...</p></div>;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
       <aside className="hidden md:flex w-96 bg-[#1a1c3d] flex-col sticky top-0 h-screen shadow-2xl z-[150]">
         <div className="p-12 border-b border-white/5">
           <AppBrand />
