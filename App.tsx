@@ -26,10 +26,9 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local'>('local');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isCloudActionLoading, setIsCloudActionLoading] = useState(false);
   
-  // Controle de primeira carga da nuvem
   const [isReadyForCloudSync, setIsReadyForCloudSync] = useState(false);
-
   const syncTimeoutRef = useRef<number | null>(null);
 
   const getTodayDate = () => {
@@ -46,7 +45,6 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
-  // 1. Inicialização do Sistema (Local e Auth)
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -105,13 +103,11 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // 2. Persistência Local (IndexedDB)
   useEffect(() => {
     if (isLoading) return;
     saveData({ history, customSongs, draft, learningList });
   }, [history, customSongs, draft, learningList, isLoading]);
 
-  // 3. Auto-Sync Cloud (Supabase)
   useEffect(() => {
     if (!isReadyForCloudSync || !user || isOffline) return;
 
@@ -132,12 +128,52 @@ const App: React.FC = () => {
         console.error("Falha no Auto-Sync Cloud:", e);
         setSyncStatus('local');
       }
-    }, 2000);
+    }, 3000);
 
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
     };
   }, [history, customSongs, learningList, user, isOffline, isReadyForCloudSync]);
+
+  const handleManualUpload = async () => {
+    if (!user || isOffline) return;
+    setIsCloudActionLoading(true);
+    try {
+      const { error } = await supabase.from('user_data').upsert({
+        user_id: user.id,
+        json_data: { history, customSongs, learningList },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+      if (error) throw error;
+      setSyncStatus('synced');
+      alert("Dados enviados para a nuvem com sucesso!");
+    } catch (e) {
+      alert("Erro ao sincronizar dados.");
+    } finally {
+      setIsCloudActionLoading(false);
+    }
+  };
+
+  const handleManualDownload = async () => {
+    if (!user || isOffline) return;
+    if (!window.confirm("Isso substituirá seus dados locais pela versão da nuvem. Continuar?")) return;
+    setIsCloudActionLoading(true);
+    try {
+      const { data } = await supabase.from('user_data').select('json_data').eq('user_id', user.id).maybeSingle();
+      if (data?.json_data) {
+        setHistory(data.json_data.history || []);
+        setCustomSongs(data.json_data.customSongs || []);
+        setLearningList(data.json_data.learningList || []);
+        alert("Dados recuperados da nuvem!");
+      } else {
+        alert("Nenhum dado encontrado na nuvem.");
+      }
+    } catch (e) {
+      alert("Erro ao baixar dados.");
+    } finally {
+      setIsCloudActionLoading(false);
+    }
+  };
 
   const fullSongList = useMemo(() => {
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
@@ -212,40 +248,57 @@ const App: React.FC = () => {
   const UserProfile = () => {
     if (!user) {
       return (
-        <div className="px-10 py-6 border-b border-white/5 animate-fadeIn">
+        <div className="px-10 py-8 border-b border-white/5 animate-fadeIn">
           <button 
             onClick={() => setShowLoginModal(true)}
-            className="w-full py-4 bg-amber-400 text-[#1a1c3d] rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+            className="w-full py-5 bg-amber-400 text-[#1a1c3d] rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all"
           >
-            <span className="material-icons text-sm">login</span>
+            <span className="material-icons text-lg">cloud_sync</span>
             Entrar / Sincronizar
           </button>
         </div>
       );
     }
     return (
-      <div className="px-10 py-6 border-b border-white/5 flex items-center gap-4 bg-white/5 animate-fadeIn">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center overflow-hidden border border-white/10 shrink-0">
-          {user.user_metadata?.avatar_url ? (
-            <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-          ) : (
-            <span className="material-icons text-[#1a1c3d] text-xl">person</span>
-          )}
-        </div>
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-white font-black text-[10px] uppercase truncate">{user.user_metadata?.full_name || user.email}</span>
-          <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Sincronizado</span>
+      <div className="px-10 py-8 border-b border-white/5 space-y-6 bg-white/5 animate-fadeIn">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center overflow-hidden border border-white/10 shrink-0">
+            <span className="material-icons text-[#1a1c3d] text-2xl">person</span>
           </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-white font-black text-xs uppercase truncate leading-tight">{user.email?.split('@')[0]}</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-rose-500' : 'bg-emerald-400 animate-pulse'}`}></span>
+              <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">{isOffline ? 'Offline' : 'Conectado'}</span>
+            </div>
+          </div>
+          <button 
+            onClick={() => supabase.auth.signOut()}
+            className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400 hover:bg-rose-500/20 transition-all"
+            title="Sair"
+          >
+            <span className="material-icons text-sm">logout</span>
+          </button>
         </div>
-        <button 
-          onClick={() => supabase.auth.signOut()}
-          className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-500/20 transition-all"
-          title="Sair"
-        >
-          <span className="material-icons text-sm">logout</span>
-        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button 
+            disabled={isCloudActionLoading || isOffline}
+            onClick={handleManualUpload}
+            className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white py-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-lg disabled:opacity-50"
+          >
+            <span className={`material-icons text-sm ${isCloudActionLoading ? 'animate-spin' : ''}`}>cloud_upload</span>
+            <span className="text-[7px] font-black uppercase tracking-widest">Sincronizar</span>
+          </button>
+          <button 
+            disabled={isCloudActionLoading || isOffline}
+            onClick={handleManualDownload}
+            className="flex-1 bg-amber-400 hover:bg-amber-500 text-[#1a1c3d] py-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-lg disabled:opacity-50"
+          >
+            <span className={`material-icons text-sm ${isCloudActionLoading ? 'animate-spin' : ''}`}>cloud_download</span>
+            <span className="text-[7px] font-black uppercase tracking-widest">Recuperar</span>
+          </button>
+        </div>
       </div>
     );
   };
@@ -254,16 +307,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
-      {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-96 bg-[#1a1c3d] flex-col sticky top-0 h-screen shadow-2xl z-[150]">
         <div className="p-12 border-b border-white/5">
           <AppBrand />
         </div>
         
-        {/* User Profile no topo no Desktop */}
         <UserProfile />
 
-        <nav className="flex-1 py-6 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 py-4 overflow-y-auto custom-scrollbar">
           {menuItems.map(item => (
             <button 
               key={item.id}
@@ -277,7 +328,6 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      {/* Mobile Header */}
       <header className="md:hidden bg-[#1a1c3d] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl rounded-b-[2rem]">
         <AppBrand />
         <button onClick={() => setIsMobileMenuOpen(true)} className="p-4 bg-white/10 rounded-2xl active:scale-90 transition-transform">
@@ -285,7 +335,6 @@ const App: React.FC = () => {
         </button>
       </header>
 
-      {/* Mobile Drawer */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-[300] md:hidden">
           <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-lg" onClick={() => setIsMobileMenuOpen(false)}></div>
@@ -295,7 +344,6 @@ const App: React.FC = () => {
               <button onClick={() => setIsMobileMenuOpen(false)} className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-white/40"><span className="material-icons">close</span></button>
             </div>
             
-            {/* User Profile no topo no Mobile Drawer */}
             <UserProfile />
 
             <nav className="flex-1 py-4 overflow-y-auto">
@@ -314,7 +362,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Global Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl animate-fadeIn" onClick={() => setShowLoginModal(false)} />
