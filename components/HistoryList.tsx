@@ -19,6 +19,36 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
   const monthNames = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
   const dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
+  const getSpecialBadge = (dateString: string) => {
+    const d = new Date(dateString + 'T12:00:00');
+    const day = d.getDay();
+    if (day === 1) return { 
+      label: 'Glorificação', 
+      color: 'bg-indigo-600', 
+      emoji: '🎤', 
+      bg: 'bg-indigo-50/80', 
+      border: 'border-indigo-100', 
+      textColor: 'text-indigo-700' 
+    };
+    if (day === 3) return { 
+      label: 'Senhoras', 
+      color: 'bg-rose-500', 
+      emoji: '🌸', 
+      bg: 'bg-rose-50/80', 
+      border: 'border-rose-100', 
+      textColor: 'text-rose-700' 
+    };
+    if (day === 4) return { 
+      label: 'Oração', 
+      color: 'bg-amber-500', 
+      emoji: '🙏', 
+      bg: 'bg-amber-50/80', 
+      border: 'border-amber-100', 
+      textColor: 'text-amber-700' 
+    };
+    return null;
+  };
+
   const groupedHistory = useMemo(() => {
     let filtered = [...history];
     if (externalFilter) {
@@ -28,9 +58,11 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
       const lowerSearch = searchTerm.toLowerCase();
       filtered = filtered.filter(r => {
         const d = new Date(r.date + 'T12:00:00');
+        const badge = getSpecialBadge(r.date);
         return (
           r.date.includes(lowerSearch) ||
           r.description.toLowerCase().includes(lowerSearch) ||
+          badge?.label.toLowerCase().includes(lowerSearch) ||
           Object.values(r.roles).some(v => String(v).toLowerCase().includes(lowerSearch)) ||
           r.songs.some(s => s.toLowerCase().includes(lowerSearch))
         );
@@ -50,25 +82,21 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
   const generateSingleReport = (r: ServiceRecord) => {
     const d = new Date(r.date + 'T12:00:00');
     const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-    
+    const badge = getSpecialBadge(r.date);
     let text = `*RELATÓRIO DE CULTO - ${dateStr} (${r.description})*\n`;
+    if (badge) text = `*RELATÓRIO DE CULTO (${badge.label.toUpperCase()}) - ${dateStr}*\n`;
+    
     if (r.roles.gate) text += `> Portão: ${r.roles.gate}\n`;
     if (r.roles.praise) text += `> Louvor: ${r.roles.praise}\n`;
-    
-    // Na segunda ou quarta pode não ter palavra
     if (r.roles.word) text += `> Palavra: ${r.roles.word}\n`;
-
     if (r.roles.word === 'TRANSMISSÃO') {
       text += `Satélite: Transmissão\n`;
     } else if (r.roles.scripture) {
       text += `Texto: ${r.roles.scripture}\n`;
     }
-
     if (r.songs.length > 0) {
       text += `\nLOUVORES: \n`;
-      r.songs.forEach((s, i) => {
-        text += ` ${i + 1}. ${s}\n`;
-      });
+      r.songs.forEach((s, i) => { text += ` ${i + 1}. ${s}\n`; });
     }
     return text;
   };
@@ -99,14 +127,24 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-10 px-1">
+    <div className="space-y-8 animate-fadeIn">
+      <div className="section-header">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+            <span className="material-icons text-xl">history</span>
+          </div>
+          <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Histórico de Cultos</h2>
+        </div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Consulte todos os registros anteriores</p>
+      </div>
+
       <div className="flex items-center gap-3">
-        <div className="flex-1 bg-white rounded-3xl flex items-center px-6 py-4 shadow-xl border border-slate-100">
+        <div className="flex-1 bg-white rounded-2xl flex items-center px-6 py-4 shadow-xl border border-slate-100">
           <span className="material-icons text-slate-300 mr-4">search</span>
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Data, Obreiro, Hino..." className="w-full bg-transparent font-bold text-slate-900 outline-none text-sm" />
         </div>
         {history.length > 0 && (
-          <button onClick={() => setShowShareOptions(true)} className="w-14 h-14 bg-indigo-600 text-white rounded-3xl flex items-center justify-center shadow-lg active:scale-90"><span className="material-icons">share</span></button>
+          <button onClick={() => setShowShareOptions(true)} className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 shrink-0"><span className="material-icons">share</span></button>
         )}
       </div>
 
@@ -136,49 +174,49 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
 
       {(Object.entries(groupedHistory) as [string, ServiceRecord[]][]).map(([month, records]) => (
         <div key={month} className="space-y-5">
-          <div className="px-6 flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">{month}</h3><span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{records.length} Cultos</span></div>
+          <div className="px-2 flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">{month}</h3></div>
           <div className="grid gap-5">
-            {records.map(record => (
-              <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-lg border border-slate-100 hover:border-indigo-100 transition-all">
-                <div className="flex flex-col gap-8">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
-                        <span className="text-sm font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
+            {records.map(record => {
+              const badge = getSpecialBadge(record.date);
+              return (
+                <div key={record.id} className="card-main p-6 md:p-10">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                      <div className="flex items-center gap-5">
+                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
+                          <span className="text-sm font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-black text-slate-900 uppercase text-base tracking-tight truncate">{record.description}</h4>
+                          <div className="flex items-center gap-2 mt-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p></div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-black text-slate-900 uppercase text-base tracking-tight truncate">{record.description}</h4>
-                        <div className="flex items-center gap-2 mt-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p></div>
+                      <div className="flex items-center gap-2.5 justify-end">
+                        <button onClick={() => handleIndividualShare(record)} className="w-11 h-11 flex items-center justify-center text-emerald-600 bg-emerald-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">share</span></button>
+                        <button onClick={() => onEdit(record)} className="w-11 h-11 flex items-center justify-center text-indigo-600 bg-indigo-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
+                        <button onClick={() => setItemToDelete(record.id)} className="w-11 h-11 flex items-center justify-center text-rose-500 bg-rose-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2.5 justify-end">
-                      <button onClick={() => handleIndividualShare(record)} className="w-11 h-11 flex items-center justify-center text-emerald-600 bg-emerald-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">share</span></button>
-                      <button onClick={() => onEdit(record)} className="w-11 h-11 flex items-center justify-center text-indigo-600 bg-indigo-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
-                      <button onClick={() => setItemToDelete(record.id)} className="w-11 h-11 flex items-center justify-center text-rose-500 bg-rose-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
+
+                    {/* FAIXA NO HISTÓRICO */}
+                    {badge && (
+                      <div className={`w-full py-2.5 px-4 ${badge.bg} ${badge.border} border rounded-xl flex items-center gap-2.5 shadow-sm`}>
+                        <span className="text-base leading-none">{badge.emoji}</span>
+                        <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${badge.textColor}`}>Culto de {badge.label}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
+                      <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
+                      <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
+                      <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
-                    <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
-                    <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
-                    <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
-                  </div>
-                  {record.songs.length > 0 && (
-                    <div className="pt-6 border-t border-slate-100">
-                      <div className="flex flex-wrap gap-2.5">
-                        {record.songs.map((song, idx) => (
-                          <div key={idx} className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 flex items-center gap-3">
-                            <span className="text-[10px] font-black text-indigo-600/50">#{idx + 1}</span>
-                            <span className="text-[11px] font-bold text-slate-700 uppercase truncate max-w-[200px] tracking-tight">{song}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

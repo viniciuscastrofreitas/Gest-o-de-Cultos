@@ -78,8 +78,8 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
 
     return { 
       groupedMain: mainGroups, groupedCias: ciasGroups,
-      mainStats: { unplayed: unMain, total: totMain, percent: totMain > 0 ? Math.round(((totMain - unMain) / totMain) * 100) : 0 },
-      ciasStats: { unplayed: unCias, total: totCias, percent: totCias > 0 ? Math.round(((totCias - unCias) / totCias) * 100) : 0 }
+      mainStats: { unplayed: unMain, total: totMain, percent: totMain > 0 ? ((totMain - unMain) / totMain) * 100 : 0 },
+      ciasStats: { unplayed: unCias, total: totCias, percent: totCias > 0 ? ((totCias - unCias) / totCias) * 100 : 0 }
     };
   }, [fullSongList, history, searchTerm]);
 
@@ -91,6 +91,11 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
     } else {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
     }
+  };
+
+  const formatPercent = (val: number) => {
+    // Formata com no máximo 1 casa decimal e troca ponto por vírgula
+    return val.toFixed(1).replace('.', ',');
   };
 
   return (
@@ -115,7 +120,7 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
             <div className="flex-1 w-full">
               <div className="flex justify-between items-end mb-3">
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{p.label}</span>
-                <span className={`text-${p.color}-600 font-black text-xs`}>{p.stats.percent}% OK</span>
+                <span className={`text-${p.color}-600 font-black text-xs`}>{formatPercent(p.stats.percent)}%</span>
               </div>
               <div className="w-full h-2.5 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
                 <div className={`h-full bg-${p.color}-500 transition-all duration-1000`} style={{ width: `${p.stats.percent}%` }} />

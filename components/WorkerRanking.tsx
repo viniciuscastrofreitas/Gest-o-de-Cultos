@@ -32,12 +32,15 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
   }, [history]);
 
   const StatBox = ({ label, count, onClick, icon }: { label: string, count: number, onClick: () => void, icon: string }) => (
-    <button onClick={onClick} className="flex-1 bg-slate-50 rounded-2xl p-5 border border-slate-100 flex flex-col items-center justify-center transition-all active:scale-95 hover:bg-slate-100 group">
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="material-icons text-[12px] text-slate-300 group-hover:text-indigo-600">{icon}</span>
-        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600">{label}</span>
+    <button 
+      onClick={onClick} 
+      className="w-full aspect-square bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center justify-center transition-all active:scale-95 hover:bg-slate-100 group p-2"
+    >
+      <div className="flex flex-col items-center gap-1 mb-1.5">
+        <span className="material-icons text-[14px] text-slate-300 group-hover:text-indigo-600">{icon}</span>
+        <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 text-center">{label}</span>
       </div>
-      <span className="text-3xl font-black text-slate-900 leading-none">{count}</span>
+      <span className="text-2xl md:text-3xl font-black text-slate-900 leading-none">{count}</span>
     </button>
   );
 
@@ -52,14 +55,14 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
         <div className="grid gap-8">
           {stats.map((worker) => (
             <div key={worker.name} className="bg-white rounded-[3rem] overflow-hidden shadow-2xl border border-slate-100">
-              <div className="bg-slate-50 px-10 py-8 flex justify-between items-center relative overflow-hidden border-b border-slate-100">
+              <div className="bg-slate-50 px-8 md:px-10 py-8 flex justify-between items-center relative overflow-hidden border-b border-slate-100">
                 <h3 className="text-slate-900 font-black text-xl tracking-tight uppercase relative z-10">{worker.name}</h3>
                 <div className="bg-amber-500 text-white px-5 py-2 rounded-full font-black text-[10px] shadow-lg flex items-center gap-2 relative z-10 shadow-amber-500/20">
                   <span className="material-icons text-[14px]">military_tech</span>
                   {worker.total} ATOS
                 </div>
               </div>
-              <div className="p-6 flex gap-4">
+              <div className="p-5 md:p-6 grid grid-cols-3 gap-3 md:gap-5">
                 <StatBox label="Portão" count={worker.gate.length} icon="door_front" onClick={() => setModalData({ worker: worker.name, role: 'Portão', events: worker.gate })} />
                 <StatBox label="Louvor" count={worker.praise.length} icon="music_note" onClick={() => setModalData({ worker: worker.name, role: 'Louvor', events: worker.praise })} />
                 <StatBox label="Palavra" count={worker.word.length} icon="record_voice_over" onClick={() => setModalData({ worker: worker.name, role: 'Palavra', events: worker.word })} />

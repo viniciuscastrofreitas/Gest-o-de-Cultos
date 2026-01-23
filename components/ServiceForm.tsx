@@ -4,7 +4,7 @@ import { ServiceRecord, SongStats, ServiceDraft } from '../types';
 import { WORKERS_LIST } from '../constants';
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] block mb-2 text-center md:text-left">{children}</label>
+  <label className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3 text-center md:text-left">{children}</label>
 );
 
 const FormInput = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
@@ -37,13 +37,51 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   const dateInfo = useMemo(() => {
     const d = new Date(draft.date + 'T12:00:00');
     const dayIndex = d.getDay();
+    let specialName = null;
+    let specialColor = '';
+    let specialEmoji = '';
+    let specialBg = '';
+    let specialBorder = '';
+    let specialTextColor = '';
+    
+    if (dayIndex === 1) { 
+      specialName = 'Glorificação'; 
+      specialColor = 'bg-indigo-600'; 
+      specialEmoji = '🎤';
+      specialBg = 'bg-indigo-50/80';
+      specialBorder = 'border-indigo-100';
+      specialTextColor = 'text-indigo-700';
+    }
+    else if (dayIndex === 3) { 
+      specialName = 'Senhoras'; 
+      specialColor = 'bg-rose-500'; 
+      specialEmoji = '🌸';
+      specialBg = 'bg-rose-50/80';
+      specialBorder = 'border-rose-100';
+      specialTextColor = 'text-rose-700';
+    }
+    else if (dayIndex === 4) { 
+      specialName = 'Oração'; 
+      specialColor = 'bg-amber-500'; 
+      specialEmoji = '🙏';
+      specialBg = 'bg-amber-50/80';
+      specialBorder = 'border-amber-100';
+      specialTextColor = 'text-amber-700';
+    }
+
     return { 
       name: dayOfWeekNames[dayIndex], 
       fullName: fullDayNames[dayIndex], 
       isSunday: dayIndex === 0, 
       isMonday: dayIndex === 1,
       isWednesday: dayIndex === 3,
-      isThursday: dayIndex === 4 
+      isThursday: dayIndex === 4,
+      specialName,
+      specialColor,
+      specialEmoji,
+      specialBg,
+      specialBorder,
+      specialTextColor
     };
   }, [draft.date]);
 
@@ -112,7 +150,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
       .slice(0, 30);
   }, [inputValue, fullSongList]);
 
-  const onDragStart = (e: React.DragEvent, index: number) => setDraggedIndex(index);
+  const onDragStart = (item: string, index: number) => setDraggedIndex(index);
   const onDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
@@ -140,18 +178,29 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
         </div>
       )}
 
-      <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
-        <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-slate-100">
+      <div className="space-y-6 animate-fadeIn pb-20">
+        <div className="section-header">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+              <span className="material-icons text-xl">{editingId ? 'edit' : 'add_circle'}</span>
+            </div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">{editingId ? 'Editar Relatório' : 'Novo Relatório'}</h2>
+          </div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preencha os dados do culto</p>
+        </div>
+
+        <div className="card-main p-8 md:p-12">
           <div className="space-y-8">
-            {/* 1. DATA E PERÍODO */}
             <div className="grid grid-cols-1 gap-6">
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col">
                 <Label>Data do Culto</Label>
                 <FormInput className="w-full">
                   <input type="date" value={draft.date} onChange={(e) => setDraft(prev => ({ ...prev, date: e.target.value }))} className="w-full bg-transparent font-black text-lg text-slate-900 text-center outline-none py-2" />
                 </FormInput>
-                <div className="mt-3 bg-indigo-50 px-4 py-1.5 rounded-full">
-                  <span className="text-indigo-600 font-black text-[9px] uppercase tracking-[0.2em]">DIA: {dateInfo.name}</span>
+                <div className="mt-3 flex flex-wrap gap-2 justify-center">
+                  <div className="bg-indigo-50 px-4 py-1.5 rounded-full border border-indigo-100">
+                    <span className="text-indigo-600 font-black text-[9px] uppercase tracking-[0.2em]">dia: {dateInfo.name}</span>
+                  </div>
                 </div>
               </div>
 
@@ -166,7 +215,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               )}
             </div>
 
-            {/* 2. HINOS (Sempre visível, mas pode estar vazio na quarta se preferir) */}
             <div className="space-y-4 pt-8 border-t border-slate-100">
               <div className="flex justify-between items-center">
                 <Label>Hinos do Culto</Label>
@@ -182,7 +230,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                 <button onClick={() => checkAndAddSong(inputValue)} className="bg-indigo-600 text-white w-14 h-14 rounded-2xl flex items-center justify-center active:scale-90 shadow-lg shrink-0"><span className="material-icons text-2xl">add</span></button>
               </div>
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-[250] w-[calc(100%-3rem)] md:w-[calc(100%-6rem)] bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-100 max-h-60 overflow-y-auto mt-1">
+                <div className="absolute z-[250] w-[calc(100%-4rem)] md:w-[calc(100%-10rem)] bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-200 max-h-60 overflow-y-auto mt-1">
                   {suggestions.map(s => (
                     <div key={s} onMouseDown={() => checkAndAddSong(s)} className="p-4 hover:bg-slate-50 cursor-pointer border-b border-slate-50 font-bold text-xs flex justify-between items-center transition-colors">
                       <span className={s.startsWith('(CIAS)') ? 'text-slate-400' : 'text-slate-900'}>{s}</span>
@@ -193,7 +241,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                 {draft.songs.map((s, i) => (
-                  <div key={`${s}-${i}`} draggable onDragStart={(e) => onDragStart(e, i)} onDragOver={(e) => onDragOver(e, i)} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-move ${draggedIndex === i ? 'opacity-30' : ''}`}>
+                  <div key={`${s}-${i}`} draggable onDragStart={() => onDragStart(s, i)} onDragOver={(e) => onDragOver(e, i)} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-move ${draggedIndex === i ? 'opacity-30' : ''}`}>
                     <span className="font-bold text-slate-700 text-[13px] truncate">#{i+1} {s}</span>
                     <button onClick={() => setDraft(prev => ({...prev, songs: prev.songs.filter((_, idx) => idx !== i)}))} className="text-slate-300 hover:text-rose-500"><span className="material-icons text-lg">close</span></button>
                   </div>
@@ -201,9 +249,18 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
               </div>
             </div>
 
-            {/* 3. RESPONSÁVEIS DINÂMICOS */}
             <div className="space-y-6 pt-8 border-t border-slate-100">
-              {/* Portão: Presente em todos os dias citados */}
+              {/* FAIXA DE IDENTIDADE DO CULTO */}
+              {dateInfo.specialName && (
+                <div className={`w-full py-4 px-6 ${dateInfo.specialBg} ${dateInfo.specialBorder} border rounded-2xl flex items-center justify-between shadow-sm animate-fadeIn mb-2`}>
+                   <div className="flex items-center gap-3">
+                     <span className="text-xl">{dateInfo.specialEmoji}</span>
+                     <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${dateInfo.specialTextColor}`}>Culto de {dateInfo.specialName}</span>
+                   </div>
+                   <div className={`w-2 h-2 rounded-full ${dateInfo.specialColor} animate-pulse`}></div>
+                </div>
+              )}
+
               <div className="flex flex-col">
                 <Label>Portão</Label>
                 <FormInput>
@@ -214,7 +271,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                 </FormInput>
               </div>
 
-              {/* Lógica de Visibilidade: Se for Quarta, não mostra mais nada */}
               {!dateInfo.isWednesday && (
                 <>
                   <div className="flex flex-col">
@@ -227,7 +283,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                     </FormInput>
                   </div>
 
-                  {/* Segunda (SEG) não tem Palavra, Quinta (QUI) o Louvor já assume a Palavra */}
                   {!dateInfo.isMonday && !dateInfo.isThursday && (
                     <div className="flex flex-col">
                       <Label>Palavra</Label>
