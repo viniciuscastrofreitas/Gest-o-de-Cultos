@@ -1,50 +1,40 @@
 
-const CACHE_NAME = 'icm-gestao-v20';
-
-// Lista exaustiva de TUDO que o app precisa para renderizar a interface offline
-const CORE_ASSETS = [
-  './',
-  './index.html',
-  './index.tsx',
-  './App.tsx',
-  './constants.ts',
-  './types.ts',
-  './praiseList.ts',
-  './db.ts',
-  './supabase.ts',
-  './manifest.json',
-  './components/ServiceForm.tsx',
-  './components/HistoryList.tsx',
-  './components/RankingList.tsx',
-  './components/BackupRestore.tsx',
-  './components/UnplayedList.tsx',
-  './components/WorkerStats.tsx',
-  './components/WorkerRanking.tsx',
-  './components/PraiseLearningList.tsx',
-  './components/AuthForm.tsx',
+const CACHE_NAME = 'icm-gestao-v7';
+const PRECACHE_ASSETS = [
+  '/',
+  '/index.html',
+  '/index.tsx',
+  '/manifest.json',
+  '/types.ts',
+  '/constants.ts',
+  '/praiseList.ts',
+  '/db.ts',
+  '/App.tsx',
+  'https://cdn-icons-png.flaticon.com/512/1672/1672225.png',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/icon?family=Material+Icons',
+  'https://fonts.gstatic.com/s/materialicons/v142/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2',
+  'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap'
+];
+
+const ESM_DEPS = [
   'https://esm.sh/react@^19.2.3',
   'https://esm.sh/react-dom@^19.2.3',
-  'https://esm.sh/@supabase/supabase-js@2.45.4',
-  'https://fonts.gstatic.com/s/materialicons/v142/flUhRq6tzZclQEJ-Vdg-IuiaDsNcIhQ8tQ.woff2'
+  'https://esm.sh/react@^19.2.3/',
+  'https://esm.sh/react-dom@^19.2.3/'
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return Promise.allSettled(
-        CORE_ASSETS.map(url => 
-          fetch(url)
-            .then(res => {
-              if (res.ok) return cache.put(url, res);
-            })
-            .catch(err => console.warn(`PWA: Falha ao cachear ${url}`))
+        [...PRECACHE_ASSETS, ...ESM_DEPS].map(url => 
+          cache.add(url).catch(err => console.warn(`Falha no cache: ${url}`))
         )
       );
     })
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -62,23 +52,37 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Não interceptar Supabase
-  if (url.host.includes('supabase.co')) return;
+  if (url.host === 'esm.sh' || url.host.includes('fonts.') || url.host.includes('cdn.tailwindcss.com') || url.host.includes('flaticon.com')) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse.status === 200) {
+            const cacheCopy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheCopy));
+          }
+          return networkResponse;
+        }).catch(() => new Response("Offline", { status: 503 }));
+      })
+    );
+    return;
+  }
 
-  // Estratégia Cache-First com atualização em background (Stale-while-revalidate)
-  // Isso garante que o app abra INSTANTANEAMENTE se houver cache
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+    fetch(request)
+      .then((networkResponse) => {
+        if (request.method === 'GET' && networkResponse.status === 200) {
           const cacheCopy = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheCopy));
         }
         return networkResponse;
-      }).catch(() => null);
-
-      // Retorna o cache se existir, senão aguarda a rede
-      return cachedResponse || fetchPromise || (request.mode === 'navigate' ? caches.match('./index.html') : null);
-    })
+      })
+      .catch(() => {
+        return caches.match(request).then((cachedResponse) => {
+          if (cachedResponse) return cachedResponse;
+          if (request.mode === 'navigate') return caches.match('/index.html') || caches.match('/');
+          return new Response("Offline", { status: 503 });
+        });
+      })
   );
 });

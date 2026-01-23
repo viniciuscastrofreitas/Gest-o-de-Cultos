@@ -1,10 +1,9 @@
-
 {
   "name": "Relatório de Culto",
   "short_name": "Relatório",
   "description": "Gestão de louvores para ICM Santo Antônio II",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1a1c3d",
   "theme_color": "#1a1c3d",

@@ -3,54 +3,44 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-/**
- * Service Worker Registration - Version 20
- * Simplificado para evitar erros de "Invalid URL" em ambientes de sandbox/preview.
- */
-const registerServiceWorker = async () => {
-  if (!('serviceWorker' in navigator)) return;
+// Registrar Service Worker para suporte Offline robusto
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // Usando caminho relativo './sw.js' para melhor compatibilidade com subdiretórios e previews
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        console.log('Service Worker pronto:', reg.scope);
+        
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
 
-  try {
-    // Registro direto usando caminho relativo, que é o mais robusto.
-    const registration = await navigator.serviceWorker.register('sw.js', {
-      scope: './'
-    });
-    
-    console.log('PWA: Modo offline ativado.');
-
-    registration.onupdatefound = () => {
-      const installingWorker = registration.installing;
-      if (installingWorker) {
-        installingWorker.onstatechange = () => {
-          if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('PWA: Nova atualização instalada. Reiniciando...');
-            window.location.reload();
+        reg.onupdatefound = () => {
+          const installingWorker = reg.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('Nova versão disponível. Recarregue para atualizar.');
+              }
+            };
           }
         };
-      }
-    };
-  } catch (error: any) {
-    // Ignora apenas erros de cross-origin comuns em desenvolvimento
-    if (error.message && !error.message.includes('origin')) {
-      console.warn('PWA: Aviso no registro:', error.message);
-    }
-  }
-};
-
-registerServiceWorker();
-
-let refreshing = false;
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      window.location.reload();
-      refreshing = true;
-    }
+      })
+      .catch(err => {
+        // Log amigável para erro de origem comum em ambientes de preview (iFrames)
+        if (err.message.includes('origin')) {
+          console.warn('Service Worker: Registro ignorado (ambiente de pré-visualização). Isso é normal durante o desenvolvimento.');
+        } else {
+          console.error('Erro ao registrar Service Worker:', err);
+        }
+      });
   });
 }
 
 const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error("Root não encontrado");
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

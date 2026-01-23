@@ -1,6 +1,8 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ServiceRecord, PraiseLearningItem } from '../types';
+import { supabase } from '../supabase';
+import AuthForm from './AuthForm';
 
 interface Props {
   history: ServiceRecord[];
@@ -11,9 +13,37 @@ interface Props {
 
 const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, onRestore }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [pendingData, setPendingData] = useState<{ history: ServiceRecord[], customSongs: string[], learningList: PraiseLearningItem[] } | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
+
+  const fetchLastSync = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from('user_data')
+        .select('updated_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (data) setLastSyncDate(data.updated_at);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) fetchLastSync(u.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) fetchLastSync(u.id);
+      else setLastSyncDate(null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleBackup = () => {
     const dataStr = JSON.stringify({ history, customSongs, learningList }, null, 2);
@@ -33,132 +63,163 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, on
       try {
         const json = JSON.parse(event.target?.result as string);
         if (json && Array.isArray(json.history)) {
-          setPendingData({
-            history: json.history,
-            customSongs: json.customSongs || [],
-            learningList: json.learningList || []
-          });
-          setShowConfirmModal(true);
-        } else {
-          // Erro silencioso ou modal de erro poderia ser adicionado aqui
-          console.error("Arquivo inválido.");
+          if (window.confirm("Isso substituirá seus dados atuais. Continuar?")) {
+            onRestore(json.history, json.customSongs || [], json.learningList || []);
+          }
         }
-      } catch (err) { 
-        console.error("Erro ao ler arquivo.");
-      } finally {
-        // Limpa o input para permitir selecionar o mesmo arquivo novamente se necessário
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+      } catch (err) { alert("Arquivo inválido."); }
     };
     reader.readAsText(file);
   };
 
-  const executeRestore = () => {
-    if (pendingData) {
-      onRestore(pendingData.history, pendingData.customSongs, pendingData.learningList);
-      setShowConfirmModal(false);
-      setShowSuccessModal(true);
-      setPendingData(null);
+  const handleRestoreFromCloud = async () => {
+    if (!user) return;
+    if (!window.confirm("Substituir dados locais pela versão da nuvem?")) return;
+    
+    setIsSyncing(true);
+    try {
+      const { data } = await supabase.from('user_data').select('json_data').eq('user_id', user.id).maybeSingle();
+      if (data?.json_data) {
+        onRestore(data.json_data.history || [], data.json_data.customSongs || [], data.json_data.learningList || []);
+        alert("Restaurado com sucesso!");
+      } else {
+        alert("Nenhum dado encontrado na nuvem para este usuário.");
+      }
+    } catch (e: any) { alert("Erro ao baixar dados."); }
+    finally { setIsSyncing(false); }
+  };
+
+  const handleUploadToCloud = async () => {
+    if (!user) return;
+    if (!window.confirm("Deseja enviar seus dados locais atuais para a nuvem? Isso sobrescreverá o backup online anterior.")) return;
+
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('user_data').upsert({
+        user_id: user.id,
+        json_data: { history, customSongs, learningList },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      
+      await fetchLastSync(user.id);
+      alert("Dados enviados para a nuvem com sucesso!");
+    } catch (e: any) {
+      alert("Erro ao enviar dados: " + e.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
   return (
-    <div className="space-y-10 animate-fadeIn max-w-4xl mx-auto pb-10">
+    <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-10">
       <div className="px-2">
-        <h2 className="text-2xl font-black text-white flex items-center gap-3">
-          <span className="material-icons text-indigo-400">save_alt</span>
-          Arquivos de Segurança
+        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+          <span className="material-icons text-indigo-600">cloud_done</span>
+          Sincronização Cloud
         </h2>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Gerencie cópias manuais para segurança extra</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white rounded-[3rem] p-10 shadow-xl border border-slate-100 flex flex-col items-center text-center group transition-all hover:shadow-2xl">
-          <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mb-8 text-indigo-600 group-hover:scale-110 transition-transform">
-            <span className="material-icons text-4xl">download</span>
+      <div className="bg-[#1a1c3d] rounded-[2.5rem] p-8 md:p-12 shadow-2xl border border-white/5 relative overflow-hidden">
+        <div className="absolute -right-10 -bottom-10 opacity-5">
+           <span className="material-icons text-[15rem]">storage</span>
+        </div>
+        
+        <div className="relative z-10">
+          {!user ? (
+            <div className="flex flex-col items-center text-center space-y-8">
+              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center text-white/20">
+                <span className="material-icons text-4xl">lock_open</span>
+              </div>
+              <div className="max-w-xs">
+                <h3 className="text-white font-black text-xl uppercase tracking-tight">Área Restrita</h3>
+                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-2 leading-relaxed">
+                  Faça login com sua conta interna para habilitar o salvamento automático e sincronização em tempo real.
+                </p>
+              </div>
+              <AuthForm onSuccess={() => {}} />
+            </div>
+          ) : (
+            <div className="flex flex-col space-y-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-3xl bg-emerald-500 text-white flex items-center justify-center shadow-xl animate-scaleUp">
+                    <span className="material-icons text-3xl">verified_user</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Conta Conectada</span>
+                    <h3 className="text-white font-black text-lg tracking-tight truncate max-w-[200px]">
+                      {user.email}
+                    </h3>
+                    <p className="text-white/40 text-[10px] font-medium uppercase mt-1">
+                      {lastSyncDate ? `Último envio: ${new Date(lastSyncDate).toLocaleString('pt-BR')}` : 'Aguardando sincronização'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => supabase.auth.signOut()}
+                    className="bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
+                  >
+                    Sair da Conta
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                <button 
+                  disabled={isSyncing}
+                  onClick={handleUploadToCloud}
+                  className="bg-indigo-500 text-white hover:bg-indigo-600 px-6 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
+                >
+                  <span className={`material-icons ${isSyncing ? 'animate-spin' : ''}`}>
+                    {isSyncing ? 'sync' : 'cloud_upload'}
+                  </span>
+                  {isSyncing ? 'Processando...' : 'Enviar para Nuvem'}
+                </button>
+
+                <button 
+                  disabled={isSyncing}
+                  onClick={handleRestoreFromCloud}
+                  className="bg-white/10 text-white hover:bg-white/20 px-6 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
+                >
+                  <span className={`material-icons ${isSyncing ? 'animate-spin' : ''}`}>
+                    {isSyncing ? 'sync' : 'cloud_download'}
+                  </span>
+                  {isSyncing ? 'Processando...' : 'Restaurar Cloud'}
+                </button>
+              </div>
+              
+              <p className="text-center text-white/20 text-[9px] font-black uppercase tracking-[0.3em]">
+                O auto-sync salva alterações automaticamente a cada 3 segundos
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col items-center text-center group">
+          <div className="w-16 h-16 bg-indigo-50 rounded-[1.5rem] flex items-center justify-center mb-6 text-indigo-600 group-hover:scale-110 transition-transform">
+            <span className="material-icons text-3xl">download</span>
           </div>
-          <h4 className="text-xl font-black text-[#1a1c3d] mb-3 uppercase tracking-tight">Exportar</h4>
-          <p className="text-slate-400 text-[10px] font-bold uppercase mb-10 tracking-widest leading-relaxed">Crie uma cópia física dos seus dados para guardar no seu aparelho.</p>
-          <button 
-            onClick={handleBackup} 
-            className="w-full py-6 bg-[#1a1c3d] text-white font-black rounded-[2.5rem] shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase"
-          >
-            GERAR ARQUIVO JSON
-          </button>
+          <h4 className="text-lg font-black text-[#1a1c3d] mb-2 uppercase">Exportar Offline</h4>
+          <p className="text-slate-400 text-[10px] font-bold uppercase mb-8 tracking-widest">Backup manual em arquivo JSON.</p>
+          <button onClick={handleBackup} className="w-full py-5 bg-indigo-500 text-white font-black rounded-[2rem] shadow-lg active:scale-95 transition-all text-[11px] tracking-widest uppercase">GERAR ARQUIVO</button>
         </div>
 
-        <div className="bg-white rounded-[3rem] p-10 shadow-xl border border-slate-100 flex flex-col items-center text-center group transition-all hover:shadow-2xl">
-          <div className="w-20 h-20 bg-emerald-50 rounded-[2rem] flex items-center justify-center mb-8 text-emerald-600 group-hover:scale-110 transition-transform">
-            <span className="material-icons text-4xl">upload</span>
+        <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col items-center text-center group">
+          <div className="w-16 h-16 bg-emerald-50 rounded-[1.5rem] flex items-center justify-center mb-6 text-emerald-600 group-hover:scale-110 transition-transform">
+            <span className="material-icons text-3xl">upload</span>
           </div>
-          <h4 className="text-xl font-black text-[#1a1c3d] mb-3 uppercase tracking-tight">Importar</h4>
-          <p className="text-slate-400 text-[10px] font-bold uppercase mb-10 tracking-widest leading-relaxed">Restaurar registros a partir de um arquivo de backup anterior.</p>
-          <button 
-            onClick={() => fileInputRef.current?.click()} 
-            className="w-full py-6 bg-emerald-500 text-white font-black rounded-[2.5rem] shadow-xl active:scale-95 transition-all text-xs tracking-widest uppercase"
-          >
-            SELECIONAR ARQUIVO
-          </button>
+          <h4 className="text-lg font-black text-[#1a1c3d] mb-2 uppercase">Importar Offline</h4>
+          <p className="text-slate-400 text-[10px] font-bold uppercase mb-8 tracking-widest">Restaurar a partir de arquivo local.</p>
+          <button onClick={() => fileInputRef.current?.click()} className="w-full py-5 bg-emerald-500 text-white font-black rounded-[2rem] shadow-lg active:scale-95 transition-all text-[11px] tracking-widest uppercase">ABRIR BACKUP</button>
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
         </div>
       </div>
-
-      <div className="bg-white/5 rounded-[2.5rem] p-8 text-center border border-white/10">
-         <span className="material-icons text-amber-400 text-3xl mb-4">info</span>
-         <p className="text-white/60 font-medium text-[11px] leading-relaxed max-w-xs mx-auto">
-           A sincronização automática via nuvem pode ser acessada diretamente no <span className="text-white font-black">topo do menu lateral</span>.
-         </p>
-      </div>
-
-      {/* Modal de Confirmação de Restauração Local */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl animate-fadeIn" onClick={() => setShowConfirmModal(false)} />
-          <div className="relative bg-white border border-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">
-            <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-rose-500 shadow-xl shadow-rose-400/10">
-              <span className="material-icons text-4xl">warning_amber</span>
-            </div>
-            <h2 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter">Substituir Dados?</h2>
-            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-4 leading-relaxed px-4">
-              Ao importar este arquivo, seus dados atuais serão <span className="text-rose-600 font-black">totalmente substituídos</span> pela versão selecionada.
-            </p>
-            <div className="mt-10 space-y-3">
-              <button 
-                onClick={executeRestore}
-                className="w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"
-              >
-                SIM, IMPORTAR ARQUIVO
-              </button>
-              <button 
-                onClick={() => setShowConfirmModal(false)}
-                className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-[#1a1c3d] transition-all"
-              >
-                CANCELAR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Sucesso de Restauração Local */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
-          <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
-            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
-              <span className="material-icons text-4xl">check_circle</span>
-            </div>
-            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Backup Importado!</h3>
-            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Seus registros foram restaurados com sucesso.</p>
-            <button 
-              onClick={() => setShowSuccessModal(false)} 
-              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
-            >
-              CONCLUÍDO
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

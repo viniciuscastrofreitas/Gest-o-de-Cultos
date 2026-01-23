@@ -4,7 +4,6 @@ export interface ServiceRoles {
   praise: string;    // Louvor
   word: string;      // Palavra (Obreiro selecionado)
   scripture: string; // Texto Bíblico (Livro e versículo digitados)
-  leader?: string;   // Dirigente (Usado na quinta-feira)
 }
 
 export interface ServiceRecord {
