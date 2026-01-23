@@ -11,44 +11,32 @@ interface Props {
   onClearExternalFilter?: () => void;
 }
 
-const HistoryList: React.FC<Props> = ({ 
-  history, 
-  onDelete, 
-  onEdit, 
-  externalFilter, 
-  onClearExternalFilter 
-}) => {
+const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilter, onClearExternalFilter }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
-  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [showShareOptions, setShowShareOptions] = useState(false);
 
   const monthNames = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
   const dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
   const groupedHistory = useMemo(() => {
     let filtered = [...history];
-
-    // FILTRO ESPECÍFICO DO RANKING
     if (externalFilter) {
-      filtered = filtered.filter(r => 
-        r.roles[externalFilter.role as keyof typeof r.roles] === externalFilter.worker
-      );
+      filtered = filtered.filter(r => r.roles[externalFilter.role as keyof typeof r.roles] === externalFilter.worker);
     }
-
-    // Busca por texto (Filtro secundário)
     if (searchTerm) {
-      filtered = filtered.filter(r => 
-        r.date.includes(searchTerm) || 
-        r.roles?.word?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        r.roles?.praise?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        r.roles?.gate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        r.songs.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(r => {
+        const d = new Date(r.date + 'T12:00:00');
+        return (
+          r.date.includes(lowerSearch) ||
+          r.description.toLowerCase().includes(lowerSearch) ||
+          Object.values(r.roles).some(v => String(v).toLowerCase().includes(lowerSearch)) ||
+          r.songs.some(s => s.toLowerCase().includes(lowerSearch))
+        );
+      });
     }
-
-    // Ordenação (Mais recente primeiro)
     filtered.sort((a, b) => b.date.localeCompare(a.date));
-
     const groups: Record<string, ServiceRecord[]> = {};
     filtered.forEach(record => {
       const date = new Date(record.date + 'T12:00:00');
@@ -59,170 +47,130 @@ const HistoryList: React.FC<Props> = ({
     return groups;
   }, [history, searchTerm, externalFilter]);
 
-  const roleLabels: Record<string, string> = {
-    gate: 'PORTÃO',
-    praise: 'LOUVOR',
-    word: 'PALAVRA'
+  const generateSingleReport = (r: ServiceRecord) => {
+    const d = new Date(r.date + 'T12:00:00');
+    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    
+    let text = `*RELATÓRIO DE CULTO - ${dateStr} (${r.description})*\n`;
+    if (r.roles.gate) text += `> Portão: ${r.roles.gate}\n`;
+    if (r.roles.praise) text += `> Louvor: ${r.roles.praise}\n`;
+    
+    // Na segunda ou quarta pode não ter palavra
+    if (r.roles.word) text += `> Palavra: ${r.roles.word}\n`;
+
+    if (r.roles.word === 'TRANSMISSÃO') {
+      text += `Satélite: Transmissão\n`;
+    } else if (r.roles.scripture) {
+      text += `Texto: ${r.roles.scripture}\n`;
+    }
+
+    if (r.songs.length > 0) {
+      text += `\nLOUVORES: \n`;
+      r.songs.forEach((s, i) => {
+        text += ` ${i + 1}. ${s}\n`;
+      });
+    }
+    return text;
+  };
+
+  const handleWhatsAppShare = (title: string, records: ServiceRecord[]) => {
+    const text = records.map(r => generateSingleReport(r)).join('\n' + '─'.repeat(15) + '\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+    setShowShareOptions(false);
+  };
+
+  const handleIndividualShare = (record: ServiceRecord) => {
+    const text = generateSingleReport(record);
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
   };
 
   const InfoTag = ({ label, value, icon, roleId }: { label: string, value?: string, icon: string, roleId: string }) => {
     if (!value) return null;
-    
-    // Identifica se esta tag deve ser destacada pelo filtro ativo
     const isHighlighted = externalFilter?.role === roleId;
-
     return (
-      <div className={`flex flex-col border-l-2 pl-3 py-1 transition-all rounded-r-xl ${
-        isHighlighted 
-          ? 'border-amber-400 bg-amber-50/50 ring-1 ring-amber-100' 
-          : 'border-indigo-100'
-      }`}>
+      <div className={`flex flex-col border-l-2 pl-3 py-1 rounded-r-xl transition-all ${isHighlighted ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-slate-50'}`}>
         <div className="flex items-center gap-1 mb-0.5">
-          <span className={`material-icons text-[10px] ${isHighlighted ? 'text-amber-500' : 'text-slate-300'}`}>{icon}</span>
-          <span className={`text-[8px] font-black uppercase tracking-widest ${isHighlighted ? 'text-amber-600' : 'text-slate-300'}`}>{label}</span>
+          <span className={`material-icons text-[10px] ${isHighlighted ? 'text-indigo-600' : 'text-slate-500'}`}>{icon}</span>
+          <span className={`text-[8px] font-black uppercase tracking-widest ${isHighlighted ? 'text-indigo-600' : 'text-slate-500'}`}>{label}</span>
         </div>
-        <span className={`text-[11px] font-black truncate ${isHighlighted ? 'text-[#1a1c3d]' : 'text-slate-600'}`}>{value}</span>
+        <span className={`text-[11px] font-black truncate ${isHighlighted ? 'text-indigo-800' : 'text-slate-900'}`}>{value}</span>
       </div>
     );
   };
 
-  const formatServiceMessage = (r: ServiceRecord) => {
-    const d = new Date(r.date + 'T12:00:00');
-    const dayName = d.toLocaleDateString('pt-BR', { weekday: 'long' }).toUpperCase();
-    const dateFormatted = d.toLocaleDateString('pt-BR');
-    const isWednesday = d.getDay() === 3;
-
-    let msg = `RELATÓRIO DE CULTO\n`;
-    msg += `ICM SANTO ANTÔNIO II\n\n`;
-    msg += `DATA: ${dateFormatted} (${dayName})\n`;
-
-    if (isWednesday) {
-      msg += `*CULTO DIRIGIDO PELO GRUPO DE SENHORAS*\n`;
-      if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
-    } else {
-      if (r.roles.gate) msg += `> Portão: ${r.roles.gate}\n`;
-      if (r.roles.praise) msg += `> Louvor: ${r.roles.praise}\n`;
-      if (r.roles.word) msg += `> Palavra: ${r.roles.word}\n`;
-      if (r.roles.scripture) msg += `> Texto: ${r.roles.scripture}\n`;
-    }
-    
-    if (r.songs && r.songs.length > 0) {
-      msg += `Louvores: \n`;
-      r.songs.forEach((s) => msg += ` - ${s}\n`);
-    }
-    return msg;
-  };
-
-  const shareMonth = (monthKey: string) => {
-    const records = (groupedHistory as Record<string, ServiceRecord[]>)[monthKey];
-    if (!records) return;
-    let msg = `*RESUMO MENSAL - ${monthKey}*\n\n`;
-    records.forEach(r => {
-      msg += formatServiceMessage(r);
-      msg += `-------------------\n\n`;
-    });
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  };
-
   return (
     <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-10 px-1">
-      {/* HEADER DE BUSCA */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 bg-white rounded-full flex items-center px-6 py-4 shadow-xl border border-slate-50">
-            <span className="material-icons text-slate-300 mr-3">search</span>
-            <input 
-              type="text" 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              placeholder="Pesquisar histórico..." 
-              className="w-full bg-transparent font-bold text-slate-600 outline-none placeholder:text-slate-300" 
-            />
-          </div>
-          <button onClick={() => setIsMonthPickerOpen(true)} className="bg-indigo-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl shrink-0 active:scale-90 transition-transform">
-             <span className="material-icons">calendar_month</span>
-          </button>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 bg-white rounded-3xl flex items-center px-6 py-4 shadow-xl border border-slate-100">
+          <span className="material-icons text-slate-300 mr-4">search</span>
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Data, Obreiro, Hino..." className="w-full bg-transparent font-bold text-slate-900 outline-none text-sm" />
         </div>
-
-        {/* BANNER DE FILTRO ATIVO */}
-        {externalFilter && (
-          <div className="bg-[#1a1c3d] rounded-3xl p-5 shadow-2xl animate-scaleUp border border-white/5 relative overflow-hidden">
-            <div className="absolute right-0 top-0 opacity-10">
-              <span className="material-icons text-7xl -mr-4 -mt-4 text-white">filter_alt</span>
-            </div>
-            <div className="relative z-10 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-400 rounded-2xl flex items-center justify-center text-[#1a1c3d] shadow-lg">
-                  <span className="material-icons">person_search</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Filtro de Atividade</span>
-                  <p className="text-white text-sm font-medium leading-none">
-                    <span className="font-black text-amber-400">{externalFilter.worker}</span>
-                    <span className="mx-2 text-white/20">|</span>
-                    <span className="font-black uppercase text-[10px] tracking-widest">{roleLabels[externalFilter.role]}</span>
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={onClearExternalFilter}
-                className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
-              >
-                Limpar
-              </button>
-            </div>
-          </div>
+        {history.length > 0 && (
+          <button onClick={() => setShowShareOptions(true)} className="w-14 h-14 bg-indigo-600 text-white rounded-3xl flex items-center justify-center shadow-lg active:scale-90"><span className="material-icons">share</span></button>
         )}
       </div>
 
-      {/* LISTA AGRUPADA POR MÊS */}
-      {(Object.entries(groupedHistory) as [string, ServiceRecord[]][]).map(([month, records]) => (
-        <div key={month} className="space-y-4">
-          <div className="px-4 flex justify-between items-center">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">{month}</h3>
-            <span className="text-[10px] font-black text-indigo-300">{records.length} Cultos</span>
+      {showShareOptions && (
+        <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowShareOptions(false)} />
+          <div className="relative bg-white rounded-t-[3.5rem] p-10 pb-12 shadow-2xl animate-slideUp max-h-[80vh] flex flex-col">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8 shrink-0"></div>
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tighter text-center">Opções de Envio</h3>
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              <button onClick={() => handleWhatsAppShare("HISTÓRICO COMPLETO", history)} className="w-full p-6 bg-indigo-600 text-white rounded-3xl flex items-center justify-between shadow-xl active:scale-[0.98]">
+                <span className="font-black text-xs uppercase tracking-widest">Enviar Todo o Histórico</span>
+                <span className="material-icons">history</span>
+              </button>
+              <div className="pt-4 pb-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Por Mês</span></div>
+              {(Object.entries(groupedHistory) as [string, ServiceRecord[]][]).map(([month, records]) => (
+                <button key={month} onClick={() => handleWhatsAppShare(month, records)} className="w-full p-5 bg-slate-50 border border-slate-100 text-slate-700 rounded-2xl flex items-center justify-between active:scale-[0.98]">
+                  <span className="font-bold text-sm">{month}</span>
+                  <div className="flex items-center gap-2"><span className="text-[10px] font-black text-slate-400">{records.length} cultos</span><span className="material-icons text-emerald-500">whatsapp</span></div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowShareOptions(false)} className="mt-6 w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">FECHAR</button>
           </div>
-          
-          <div className="grid gap-4">
+        </div>
+      )}
+
+      {(Object.entries(groupedHistory) as [string, ServiceRecord[]][]).map(([month, records]) => (
+        <div key={month} className="space-y-5">
+          <div className="px-6 flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">{month}</h3><span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{records.length} Cultos</span></div>
+          <div className="grid gap-5">
             {records.map(record => (
-              <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100 animate-fadeIn hover:shadow-md transition-shadow">
-                <div className="flex flex-col gap-6">
-                  {/* Cabeçalho do Card */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
-                        <span className="text-[10px] font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
+              <div key={record.id} className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-lg border border-slate-100 hover:border-indigo-100 transition-all">
+                <div className="flex flex-col gap-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
+                        <span className="text-sm font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-black text-[#1a1c3d] uppercase text-sm tracking-tight truncate">{record.description}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{record.songs.length} Louvores</p>
+                        <h4 className="font-black text-slate-900 uppercase text-base tracking-tight truncate">{record.description}</h4>
+                        <div className="flex items-center gap-2 mt-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p></div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(formatServiceMessage(record))}`)} className="w-10 h-10 flex items-center justify-center text-emerald-500 bg-emerald-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">share</span></button>
-                      <button onClick={() => onEdit(record)} className="w-10 h-10 flex items-center justify-center text-indigo-500 bg-indigo-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
-                      <button onClick={() => setItemToDelete(record.id)} className="w-10 h-10 flex items-center justify-center text-rose-300 hover:text-rose-500 bg-rose-50/50 rounded-xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
+                    <div className="flex items-center gap-2.5 justify-end">
+                      <button onClick={() => handleIndividualShare(record)} className="w-11 h-11 flex items-center justify-center text-emerald-600 bg-emerald-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">share</span></button>
+                      <button onClick={() => onEdit(record)} className="w-11 h-11 flex items-center justify-center text-indigo-600 bg-indigo-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">edit</span></button>
+                      <button onClick={() => setItemToDelete(record.id)} className="w-11 h-11 flex items-center justify-center text-rose-500 bg-rose-50 rounded-2xl active:scale-90"><span className="material-icons text-xl">delete_outline</span></button>
                     </div>
                   </div>
-
-                  {/* Funções do Culto */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-slate-50 pt-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <InfoTag label="Portão" value={record.roles.gate} icon="door_front" roleId="gate" />
                     <InfoTag label="Louvor" value={record.roles.praise} icon="music_note" roleId="praise" />
                     <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
                     <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
                   </div>
-
-                  {/* Hinos */}
                   {record.songs.length > 0 && (
-                    <div className="pt-4 border-t border-slate-50">
-                      <div className="flex flex-wrap gap-2">
+                    <div className="pt-6 border-t border-slate-100">
+                      <div className="flex flex-wrap gap-2.5">
                         {record.songs.map((song, idx) => (
-                          <div key={idx} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 flex items-center gap-2">
-                            <span className="text-[8px] font-black text-indigo-300">#{idx + 1}</span>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase truncate max-w-[150px]">{song}</span>
+                          <div key={idx} className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 flex items-center gap-3">
+                            <span className="text-[10px] font-black text-indigo-600/50">#{idx + 1}</span>
+                            <span className="text-[11px] font-bold text-slate-700 uppercase truncate max-w-[200px] tracking-tight">{song}</span>
                           </div>
                         ))}
                       </div>
@@ -234,59 +182,16 @@ const HistoryList: React.FC<Props> = ({
           </div>
         </div>
       ))}
-
-      {/* MODAL MÊS */}
-      {isMonthPickerOpen && (
-        <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-[#1a1c3d]/80 backdrop-blur-sm animate-fadeIn" onClick={() => setIsMonthPickerOpen(false)} />
-          <div className="relative bg-white rounded-t-[3rem] p-8 max-h-[85vh] flex flex-col shadow-2xl animate-slideUp">
-            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8 shrink-0"></div>
-            <h3 className="text-xl font-black text-[#1a1c3d] mb-6 uppercase tracking-tighter text-center">Exportar Mensal</h3>
-            <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar pb-8">
-              {Object.keys(groupedHistory).map(monthKey => (
-                <button 
-                  key={monthKey}
-                  onClick={() => { shareMonth(monthKey); setIsMonthPickerOpen(false); }}
-                  className="w-full py-5 px-6 bg-slate-50 hover:bg-indigo-50 text-[#1a1c3d] font-bold rounded-2xl flex justify-between items-center transition-all active:scale-95"
-                >
-                  <span className="text-sm uppercase tracking-tight">{monthKey}</span>
-                  <span className="material-icons text-indigo-400">share</span>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setIsMonthPickerOpen(false)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest shrink-0">FECHAR</button>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE MODAL */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setItemToDelete(null)} />
-          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-2xl animate-slideUp">
-            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mb-6 text-rose-500">
-                <span className="material-icons text-3xl">delete_forever</span>
-              </div>
-              <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Apagar Registro?</h3>
-              <p className="text-slate-400 font-bold text-[10px] uppercase mb-8">Esta ação não pode ser desfeita.</p>
-              <div className="w-full flex flex-col gap-3">
-                <button onClick={() => { onDelete(itemToDelete!); setItemToDelete(null); }} className="w-full py-5 bg-rose-500 text-white font-black rounded-2xl shadow-xl active:scale-95">EXCLUIR AGORA</button>
-                <button onClick={() => setItemToDelete(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
-              </div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setItemToDelete(null)} />
+          <div className="relative bg-white rounded-t-[3.5rem] p-10 pb-12 shadow-2xl animate-slideUp">
+            <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter text-center">Apagar Registro?</h3>
+            <div className="w-full flex flex-col gap-3 mt-6">
+              <button onClick={() => { onDelete(itemToDelete!); setItemToDelete(null); }} className="w-full py-5 bg-rose-500 text-white font-black rounded-3xl shadow-xl">EXCLUIR</button>
+              <button onClick={() => setItemToDelete(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px]">CANCELAR</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {Object.keys(groupedHistory).length === 0 && (
-        <div className="text-center py-24 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 mx-1">
-          <span className="material-icons text-slate-200 text-6xl mb-4">history_toggle_off</span>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">Nenhum registro encontrado</p>
-          {externalFilter && (
-            <button onClick={onClearExternalFilter} className="mt-4 text-indigo-600 font-black text-[10px] uppercase border-b border-indigo-200">Limpar filtros</button>
-          )}
         </div>
       )}
     </div>

@@ -4,11 +4,11 @@ import { ServiceRecord, SongStats, ServiceDraft } from '../types';
 import { WORKERS_LIST } from '../constants';
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
-  <label className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-2 text-center md:text-left">{children}</label>
+  <label className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] block mb-2 text-center md:text-left">{children}</label>
 );
 
 const FormInput = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
-  <div className={`bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 shadow-sm transition-all focus-within:shadow-md focus-within:bg-white focus-within:border-indigo-100 ${className}`}>
+  <div className={`bg-slate-50 border border-slate-200 rounded-2xl px-4 py-1 shadow-sm transition-all focus-within:shadow-md focus-within:bg-white focus-within:border-indigo-500/50 ${className}`}>
     {children}
   </div>
 );
@@ -37,7 +37,14 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
   const dateInfo = useMemo(() => {
     const d = new Date(draft.date + 'T12:00:00');
     const dayIndex = d.getDay();
-    return { name: dayOfWeekNames[dayIndex], fullName: fullDayNames[dayIndex], isSunday: dayIndex === 0, isMonday: dayIndex === 1, isWednesday: dayIndex === 3 };
+    return { 
+      name: dayOfWeekNames[dayIndex], 
+      fullName: fullDayNames[dayIndex], 
+      isSunday: dayIndex === 0, 
+      isMonday: dayIndex === 1,
+      isWednesday: dayIndex === 3,
+      isThursday: dayIndex === 4 
+    };
   }, [draft.date]);
 
   useEffect(() => {
@@ -49,8 +56,19 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
     setDraft(prev => ({ ...prev, roles: { ...prev.roles, [role]: name } }));
   };
 
+  const handleShareHinosOnly = () => {
+    if (draft.songs.length === 0) return;
+    const text = `🎶 *LISTA DE LOUVORES*\n` + 
+      draft.songs.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+  };
+
   const handleSave = () => {
-    onSave(draft);
+    let finalDraft = { ...draft };
+    if (dateInfo.isThursday) {
+      finalDraft.roles.word = finalDraft.roles.praise;
+    }
+    onSave(finalDraft);
     setShowSuccessModal(true);
   };
 
@@ -80,17 +98,21 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
     setPendingSong(null);
   };
 
-  const shareDraftPraise = () => {
-    const dateFormatted = new Date(draft.date + 'T12:00:00').toLocaleDateString('pt-BR');
-    let msg = `*LOUVORES ICM SANTO ANTÔNIO II*\nData: ${dateFormatted}\n\n`;
-    draft.songs.forEach((s, i) => msg += `${i + 1}. ${s}\n`);
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  };
+  const suggestions = useMemo(() => {
+    if (inputValue.length < 1) return [];
+    const lowerInput = inputValue.toLowerCase();
+    return fullSongList
+      .filter(s => s.toLowerCase().includes(lowerInput))
+      .sort((a, b) => {
+        const isCiasA = a.startsWith('(CIAS)');
+        const isCiasB = b.startsWith('(CIAS)');
+        if (isCiasA !== isCiasB) return isCiasA ? 1 : -1;
+        return a.localeCompare(b, undefined, { numeric: true });
+      })
+      .slice(0, 30);
+  }, [inputValue, fullSongList]);
 
-  const onDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
-  };
-
+  const onDragStart = (e: React.DragEvent, index: number) => setDraggedIndex(index);
   const onDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
@@ -102,169 +124,115 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
     setDraft(prev => ({ ...prev, songs: newSongs }));
   };
 
-  const suggestions = useMemo(() => {
-    // Alterado de 2 para 1 para começar a buscar com um único caractere
-    if (inputValue.length < 1) return [];
-    const lowerInput = inputValue.toLowerCase();
-    return fullSongList
-      .filter(s => s.toLowerCase().includes(lowerInput))
-      .sort((a, b) => {
-        const aIsCias = a.startsWith('(CIAS)');
-        const bIsCias = b.startsWith('(CIAS)');
-        if (aIsCias && !bIsCias) return 1;
-        if (!aIsCias && bIsCias) return -1;
-        return 0; 
-      })
-      .slice(0, 30);
-  }, [inputValue, fullSongList]);
-
   return (
     <>
-      {/* Modal de Sucesso - CENTRALIZADO (Versão que você gosta) */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-[#1a1c3d]/90 backdrop-blur-md animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
-          <div className="relative bg-white rounded-[3.5rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-white">
-            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
-              <span className="material-icons text-4xl">check_circle</span>
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm animate-fadeIn" onClick={() => setShowSuccessModal(false)} />
+          <div className="relative bg-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center border border-slate-100">
+            <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white shadow-lg shadow-emerald-500/20">
+              <span className="material-icons text-3xl">check</span>
             </div>
-            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Relatório Salvo!</h3>
-            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Dados registrados com sucesso.</p>
-            <button 
-              onClick={() => setShowSuccessModal(false)} 
-              className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
-            >
-              OK, CONTINUAR
-            </button>
+            <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Relatório Salvo!</h3>
+            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-10">Sincronizado na nuvem.</p>
+            <button onClick={() => setShowSuccessModal(false)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-all uppercase text-xs tracking-widest">OK, CONTINUAR</button>
           </div>
         </div>
       )}
 
       <div className="max-w-xl mx-auto space-y-6 animate-fadeIn pb-20">
-        <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-white">
+        <div className="bg-white rounded-[3rem] shadow-2xl p-6 md:p-12 border border-slate-100">
           <div className="space-y-8">
-            {/* DATA E PERÍODO */}
+            {/* 1. DATA E PERÍODO */}
             <div className="grid grid-cols-1 gap-6">
               <div className="flex flex-col items-center">
                 <Label>Data do Culto</Label>
                 <FormInput className="w-full">
-                  <input 
-                    type="date" 
-                    value={draft.date} 
-                    onChange={(e) => setDraft(prev => ({ ...prev, date: e.target.value }))} 
-                    className="w-full bg-transparent font-black text-lg md:text-xl text-[#1a1c3d] text-center outline-none" 
-                  />
+                  <input type="date" value={draft.date} onChange={(e) => setDraft(prev => ({ ...prev, date: e.target.value }))} className="w-full bg-transparent font-black text-lg text-slate-900 text-center outline-none py-2" />
                 </FormInput>
-                <div className="mt-2 bg-indigo-50 px-4 py-1 rounded-full">
-                  <span className="text-indigo-600 font-black text-[9px] uppercase tracking-widest">DIA: {dateInfo.name}</span>
+                <div className="mt-3 bg-indigo-50 px-4 py-1.5 rounded-full">
+                  <span className="text-indigo-600 font-black text-[9px] uppercase tracking-[0.2em]">DIA: {dateInfo.name}</span>
                 </div>
               </div>
 
               {dateInfo.isSunday && (
                 <div className="flex flex-col">
                   <Label>Período</Label>
-                  <div className="flex bg-slate-50 border border-slate-100 p-1 rounded-2xl">
-                    <button onClick={() => setDraft(prev => ({ ...prev, description: 'EBD' }))} className={`flex-1 py-2.5 text-[11px] font-black rounded-xl transition-all ${draft.description === 'EBD' ? 'bg-[#1a1c3d] text-white shadow-lg' : 'text-slate-400'}`}>EBD</button>
-                    <button onClick={() => setDraft(prev => ({ ...prev, description: 'DOM' }))} className={`flex-1 py-2.5 text-[11px] font-black rounded-xl transition-all ${draft.description === 'DOM' ? 'bg-[#1a1c3d] text-white shadow-lg' : 'text-slate-400'}`}>DOM</button>
+                  <div className="flex bg-slate-50 border border-slate-200 p-1 rounded-2xl">
+                    <button onClick={() => setDraft(prev => ({ ...prev, description: 'EBD' }))} className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${draft.description === 'EBD' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>EBD</button>
+                    <button onClick={() => setDraft(prev => ({ ...prev, description: 'DOM' }))} className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${draft.description === 'DOM' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>DOM</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* LOUVORES */}
-            <div className="space-y-4 pt-6 border-t border-slate-50">
-              <Label>Hinos</Label>
+            {/* 2. HINOS (Sempre visível, mas pode estar vazio na quarta se preferir) */}
+            <div className="space-y-4 pt-8 border-t border-slate-100">
+              <div className="flex justify-between items-center">
+                <Label>Hinos do Culto</Label>
+                {draft.songs.length > 0 && (
+                  <button onClick={handleShareHinosOnly} className="text-emerald-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-2 active:scale-95 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+                    <span className="material-icons text-sm">whatsapp</span>
+                    Enviar Lista
+                  </button>
+                )}
+              </div>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={inputValue} 
-                  onChange={e => {setInputValue(e.target.value); setShowSuggestions(true);}} 
-                  className="flex-1 px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm text-slate-700 outline-none focus:ring-4 focus:ring-indigo-50 focus:bg-white transition-all shadow-sm" 
-                  placeholder="Hino ou Nº..." 
-                />
-                <button onClick={() => checkAndAddSong(inputValue)} className="bg-[#1a1c3d] text-white w-12 h-12 rounded-xl flex items-center justify-center active:scale-90 transition-transform shadow-lg shrink-0"><span className="material-icons text-xl">add</span></button>
+                <input type="text" value={inputValue} onChange={e => {setInputValue(e.target.value); setShowSuggestions(true);}} className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-indigo-500 transition-all placeholder:text-slate-300" placeholder="Hino ou Nº..." />
+                <button onClick={() => checkAndAddSong(inputValue)} className="bg-indigo-600 text-white w-14 h-14 rounded-2xl flex items-center justify-center active:scale-90 shadow-lg shrink-0"><span className="material-icons text-2xl">add</span></button>
               </div>
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-[250] w-[calc(100%-3rem)] md:w-[calc(100%-6rem)] bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-100 max-h-60 overflow-y-auto mt-1 animate-fadeIn">
+                <div className="absolute z-[250] w-[calc(100%-3rem)] md:w-[calc(100%-6rem)] bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-100 max-h-60 overflow-y-auto mt-1">
                   {suggestions.map(s => (
-                    <div key={s} onMouseDown={() => checkAndAddSong(s)} className="p-4 hover:bg-slate-50 cursor-pointer border-b border-slate-50 font-bold text-xs text-slate-700 flex justify-between items-center">
-                      <span className={s.startsWith('(CIAS)') ? 'text-slate-400' : 'text-[#1a1c3d]'}>{s}</span>
-                      <span className="material-icons text-indigo-400 text-sm">add_circle</span>
+                    <div key={s} onMouseDown={() => checkAndAddSong(s)} className="p-4 hover:bg-slate-50 cursor-pointer border-b border-slate-50 font-bold text-xs flex justify-between items-center transition-colors">
+                      <span className={s.startsWith('(CIAS)') ? 'text-slate-400' : 'text-slate-900'}>{s}</span>
+                      <span className="material-icons text-indigo-500 text-sm">add_circle</span>
                     </div>
                   ))}
                 </div>
               )}
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hinos Selecionados</span>
-                  {draft.songs.length > 0 && (
-                    <button onClick={shareDraftPraise} className="flex items-center gap-1.5 text-[9px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100 hover:bg-emerald-100 transition-colors">
-                      <span className="material-icons text-xs">share</span> COMPARTILHAR
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
-                  {draft.songs.map((s, i) => (
-                    <div 
-                      key={`${s}-${i}`} 
-                      draggable 
-                      onDragStart={(e) => onDragStart(e, i)}
-                      onDragOver={(e) => onDragOver(e, i)}
-                      onDragEnd={() => setDraggedIndex(null)}
-                      className={`flex items-center justify-between p-3.5 bg-slate-50/50 rounded-xl border border-slate-100 cursor-move transition-all active:scale-95 hover:bg-white hover:shadow-md ${draggedIndex === i ? 'opacity-50' : ''}`}
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <span className="material-icons text-slate-300 text-sm">drag_indicator</span>
-                        <span className="font-bold text-slate-700 text-[13px] truncate">#{i+1} {s}</span>
-                      </div>
-                      <button onClick={() => setDraft(prev => ({...prev, songs: prev.songs.filter((_, idx) => idx !== i)}))} className="text-rose-200 hover:text-rose-500 ml-2"><span className="material-icons text-lg">close</span></button>
-                    </div>
-                  ))}
-                </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {draft.songs.map((s, i) => (
+                  <div key={`${s}-${i}`} draggable onDragStart={(e) => onDragStart(e, i)} onDragOver={(e) => onDragOver(e, i)} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-move ${draggedIndex === i ? 'opacity-30' : ''}`}>
+                    <span className="font-bold text-slate-700 text-[13px] truncate">#{i+1} {s}</span>
+                    <button onClick={() => setDraft(prev => ({...prev, songs: prev.songs.filter((_, idx) => idx !== i)}))} className="text-slate-300 hover:text-rose-500"><span className="material-icons text-lg">close</span></button>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* ESCALA */}
-            <div className="space-y-5 pt-6 border-t border-slate-50">
+            {/* 3. RESPONSÁVEIS DINÂMICOS */}
+            <div className="space-y-6 pt-8 border-t border-slate-100">
+              {/* Portão: Presente em todos os dias citados */}
               <div className="flex flex-col">
                 <Label>Portão</Label>
                 <FormInput>
-                  <select 
-                    value={draft.roles.gate} 
-                    onChange={e => updateRole('gate', e.target.value)} 
-                    className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none appearance-none cursor-pointer"
-                  >
+                  <select value={draft.roles.gate} onChange={e => updateRole('gate', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                     <option value="">Selecione...</option>
                     {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </FormInput>
               </div>
 
-              {dateInfo.isWednesday && (
-                <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-100 flex items-center justify-center gap-3 text-indigo-700">
-                  <span className="text-lg">🌸</span>
-                  <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Culto do Grupo de Senhoras</span>
-                </div>
-              )}
-
+              {/* Lógica de Visibilidade: Se for Quarta, não mostra mais nada */}
               {!dateInfo.isWednesday && (
-                <div className="space-y-5">
+                <>
                   <div className="flex flex-col">
-                    <Label>Louvor</Label>
+                    <Label>{dateInfo.isThursday ? 'Dirigente' : 'Louvor'}</Label>
                     <FormInput>
-                      <select value={draft.roles.praise} onChange={e => updateRole('praise', e.target.value)} className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none appearance-none cursor-pointer">
+                      <select value={draft.roles.praise} onChange={e => updateRole('praise', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                         <option value="">Selecione...</option>
                         {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
                     </FormInput>
                   </div>
 
-                  {!dateInfo.isMonday && (
+                  {/* Segunda (SEG) não tem Palavra, Quinta (QUI) o Louvor já assume a Palavra */}
+                  {!dateInfo.isMonday && !dateInfo.isThursday && (
                     <div className="flex flex-col">
                       <Label>Palavra</Label>
                       <FormInput>
-                        <select value={draft.roles.word} onChange={e => updateRole('word', e.target.value)} className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none appearance-none cursor-pointer">
+                        <select value={draft.roles.word} onChange={e => updateRole('word', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                           <option value="">Selecione...</option>
                           {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
@@ -272,61 +240,41 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                     </div>
                   )}
 
-                  <div className="flex flex-col min-h-[70px] justify-end">
-                    {draft.roles.word === 'TRANSMISSÃO' ? (
-                      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-700 animate-fadeIn">
-                        <span className="text-lg">📡</span>
-                        <span className="font-black text-[9px] uppercase tracking-widest text-center leading-tight">Transmissão via satélite</span>
-                      </div>
+                  <div className="flex flex-col">
+                    {draft.roles.word === 'TRANSMISSÃO' && !dateInfo.isMonday ? (
+                      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center justify-center gap-3 text-amber-600"><span className="text-xl">📡</span><span className="font-black text-[10px] uppercase tracking-widest">Satélite</span></div>
                     ) : (
                       <>
                         <Label>Texto Bíblico</Label>
                         <FormInput>
-                          <input type="text" value={draft.roles.scripture} onChange={e => updateRole('scripture', e.target.value)} placeholder="Livro / Versículo" className="w-full bg-transparent font-black text-base text-[#1a1c3d] text-center outline-none" />
+                          <input type="text" value={draft.roles.scripture} onChange={e => updateRole('scripture', e.target.value)} placeholder="Livro / Versículo" className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none py-2 placeholder:text-slate-300" />
                         </FormInput>
                       </>
                     )}
                   </div>
-                </div>
+                </>
               )}
             </div>
 
-            <button 
-              onClick={handleSave} 
-              disabled={draft.songs.length === 0} 
-              className={`w-full py-5 rounded-2xl font-black text-base tracking-widest transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl ${draft.songs.length > 0 ? 'bg-[#1a1c3d] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
-            >
+            <button onClick={handleSave} disabled={draft.songs.length === 0 && !dateInfo.isWednesday} className={`w-full py-6 rounded-3xl font-black text-sm tracking-[0.2em] transition-all active:scale-95 flex items-center justify-center gap-3 shadow-2xl ${draft.songs.length > 0 || dateInfo.isWednesday ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>
               <span className="material-icons">save</span>
-              {editingId ? 'ATUALIZAR' : 'FINALIZAR'}
+              {editingId ? 'ATUALIZAR' : 'SALVAR RELATÓRIO'}
             </button>
-            
-            {editingId && (
-              <button 
-                onClick={onCancelEdit}
-                className="w-full py-3 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-rose-500 transition-colors"
-              >
-                CANCELAR
-              </button>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Bottom Sheet para Hino Recorrente */}
       {pendingSong && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setPendingSong(null)} />
-          <div className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-2xl animate-slideUp">
-            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPendingSong(null)} />
+          <div className="relative bg-white rounded-t-[3.5rem] p-10 pb-12 shadow-2xl animate-slideUp">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-10"></div>
             <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6 text-amber-500">
-                <span className="material-icons text-3xl">warning_amber</span>
-              </div>
-              <h3 className="text-xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
-              <p className="text-slate-500 font-bold mb-8 leading-relaxed text-[11px]">Cantado há apenas <span className="text-amber-600 font-black">{pendingSong.diff} dias</span>. Deseja prosseguir?</p>
-              
+              <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6 text-amber-500 border border-amber-100"><span className="material-icons text-4xl">warning</span></div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
+              <p className="text-slate-500 font-bold mb-10 text-[11px] uppercase tracking-widest">Cantado há <span className="text-amber-500">{pendingSong.diff} dias</span>. Prosseguir?</p>
               <div className="w-full flex flex-col gap-3">
-                <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl active:scale-95">CONFIRMAR E ADICIONAR</button>
+                <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl active:scale-95">ADICIONAR MESMO ASSIM</button>
                 <button onClick={() => setPendingSong(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
               </div>
             </div>
