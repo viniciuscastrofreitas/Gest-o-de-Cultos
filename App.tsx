@@ -28,7 +28,7 @@ const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>('local');
   
   const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
-  const lastCloudSyncRef = useRef<string | null>(null);
+  const lastCloudUpdateRef = useRef<string | null>(null);
   const syncTimeoutRef = useRef<number | null>(null);
 
   const getTodayDate = () => {
@@ -45,12 +45,65 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
+  // Função para buscar dados da nuvem e aplicar se forem mais novos
+  const pullFromCloud = async (userId: string) => {
+    try {
+      setSyncStatus('syncing');
+      const { data, error } = await supabase
+        .from('user_data')
+        .select('json_data, updated_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data && data.json_data) {
+        const cloudTimestamp = data.updated_at;
+        // Só aplica se for a primeira vez ou se o timestamp da nuvem for maior que o último processado
+        if (!lastCloudUpdateRef.current || new Date(cloudTimestamp) > new Date(lastCloudUpdateRef.current)) {
+          console.log("Aplicando dados da nuvem:", cloudTimestamp);
+          lastCloudUpdateRef.current = cloudTimestamp;
+          const remote = data.json_data;
+          if (remote.history) setHistory(remote.history);
+          if (remote.customSongs) setCustomSongs(remote.customSongs);
+          if (remote.learningList) setLearningList(remote.learningList);
+        }
+      }
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Erro ao puxar dados da nuvem:", e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Função para forçar sincronização manual (Push)
+  const pushToCloud = async () => {
+    if (!user || isOffline) return;
+    setSyncStatus('syncing');
+    try {
+      const timestamp = new Date().toISOString();
+      const { error } = await supabase.from('user_data').upsert({ 
+        user_id: user.id, 
+        json_data: { history, customSongs, learningList },
+        updated_at: timestamp
+      }, { onConflict: 'user_id' });
+      
+      if (error) throw error;
+      lastCloudUpdateRef.current = timestamp;
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Erro ao enviar dados para nuvem:", e);
+      setSyncStatus('error');
+    }
+  };
+
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Carregar sessão inicial
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
@@ -61,6 +114,7 @@ const App: React.FC = () => {
       if (!newUser) {
         setHasCheckedCloud(false);
         setSyncStatus('local');
+        lastCloudUpdateRef.current = null;
       } else {
         setShowAuthModal(false);
       }
@@ -91,74 +145,58 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Monitorar mudanças em tempo real do Supabase
   useEffect(() => {
     if (!user) return;
+
     const channel = supabase
-      .channel(`sync-changes-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_data', filter: `user_id=eq.${user.id}` },
+      .channel(`db-sync-${user.id}`)
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'user_data', filter: `user_id=eq.${user.id}` },
         (payload: any) => {
-          if (payload.new && payload.new.json_data) {
-            const remote = payload.new.json_data;
-            const remoteUpdate = payload.new.updated_at;
-            if (remoteUpdate !== lastCloudSyncRef.current) {
-              lastCloudSyncRef.current = remoteUpdate;
-              setHistory(remote.history || []);
-              setCustomSongs(remote.customSongs || []);
-              setLearningList(remote.learningList || []);
-              setSyncStatus('synced');
-            }
+          console.log("Mudança detectada no DB remoto:", payload);
+          if (payload.new && payload.new.updated_at !== lastCloudUpdateRef.current) {
+            pullFromCloud(user.id);
           }
         }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
+  // Sincronização inicial ao logar
   useEffect(() => {
     if (user && !isLoading && !hasCheckedCloud) {
-      const autoRestore = async () => {
-        try {
-          const { data, error } = await supabase.from('user_data').select('json_data, updated_at').eq('user_id', user.id).maybeSingle();
-          if (error) throw error;
-          if (data?.json_data) {
-            lastCloudSyncRef.current = data.updated_at;
-            setHistory(data.json_data.history || []);
-            setCustomSongs(data.json_data.customSongs || []);
-            setLearningList(data.json_data.learningList || []);
-          }
-        } catch (e) {
-          console.error("Erro ao verificar nuvem:", e);
-        } finally {
-          setHasCheckedCloud(true);
-          setSyncStatus('synced');
-        }
-      };
-      autoRestore();
+      pullFromCloud(user.id).then(() => setHasCheckedCloud(true));
     }
   }, [user, isLoading, hasCheckedCloud]);
 
+  // Auto-Save Local e Push Debounced para Nuvem
   useEffect(() => {
     if (isLoading) return;
+    
+    // Salva localmente (IndexedDB)
     saveData({ history, customSongs, draft, learningList });
+
+    // Se estiver logado e houver mudança local, faz o push
     if (user && !isOffline && hasCheckedCloud) {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       setSyncStatus('syncing');
+      
       syncTimeoutRef.current = window.setTimeout(async () => {
-        try {
-          const timestamp = new Date().toISOString();
-          const { error } = await supabase.from('user_data').upsert({ 
-            user_id: user.id, 
-            json_data: { history, customSongs, learningList },
-            updated_at: timestamp
-          }, { onConflict: 'user_id' });
-          if (error) throw error;
-          lastCloudSyncRef.current = timestamp;
-          setSyncStatus('synced');
-        } catch (e) {
-          console.error("Falha no Auto-Sync:", e);
-          setSyncStatus('error');
+        // Antes de enviar, verificamos se não há algo mais novo na nuvem (evitar overwrite de outro device)
+        const { data: remoteInfo } = await supabase.from('user_data').select('updated_at').eq('user_id', user.id).maybeSingle();
+        
+        if (remoteInfo && lastCloudUpdateRef.current && new Date(remoteInfo.updated_at) > new Date(lastCloudUpdateRef.current)) {
+          console.warn("Detectado dado mais novo na nuvem. Puxando antes de enviar.");
+          await pullFromCloud(user.id);
+        } else {
+          await pushToCloud();
         }
-      }, 3000);
+      }, 2000);
     } else if (!user) {
       setSyncStatus('local');
     }
@@ -202,7 +240,7 @@ const App: React.FC = () => {
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Sugestão Escala' },
-    { id: 'settings', icon: 'settings', label: 'Backup / Sistema' },
+    { id: 'settings', icon: 'settings', label: 'Backup / Nuvem' },
   ] as const;
 
   const handleTabChange = (id: typeof activeTab) => {
@@ -214,7 +252,7 @@ const App: React.FC = () => {
   const AppBrand = () => {
     const statusIcon = { synced: 'cloud_done', syncing: 'sync', local: 'cloud_off', error: 'cloud_off' }[syncStatus];
     const statusColor = { synced: 'text-emerald-400', syncing: 'text-amber-400 animate-spin', local: 'text-slate-500', error: 'text-rose-500' }[syncStatus];
-    const statusText = { synced: 'Nuvem OK', syncing: 'Sincronizando...', local: 'Offline', error: 'Erro de Conexão' }[syncStatus];
+    const statusText = { synced: 'Sincronizado', syncing: 'Sincronizando...', local: 'Modo Local', error: 'Erro Conexão' }[syncStatus];
 
     return (
       <div className="flex items-center gap-4">
@@ -247,7 +285,7 @@ const App: React.FC = () => {
             <span className="material-icons text-white">person</span>
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Logado como</span>
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Conta Ativa</span>
             <span className="text-white font-black text-xs uppercase truncate leading-none">{user.email}</span>
             <button onClick={() => supabase.auth.signOut()} className="mt-2 self-start text-[8px] font-black text-rose-400 uppercase tracking-widest hover:text-rose-300">Sair da Conta</button>
           </div>
@@ -258,13 +296,13 @@ const App: React.FC = () => {
           className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95"
         >
           <span className="material-icons text-sm">login</span>
-          Acessar Nuvem
+          Entrar p/ Sincronizar
         </button>
       )}
     </div>
   );
 
-  if (isLoading) return <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center text-white p-10"><img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" className="w-20 h-20 animate-bounce mb-6" /><p className="font-black tracking-widest text-sm animate-pulse">CARREGANDO SISTEMA...</p></div>;
+  if (isLoading) return <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center text-white p-10"><img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" className="w-20 h-20 animate-bounce mb-6" /><p className="font-black tracking-widest text-sm animate-pulse">CARREGANDO DADOS...</p></div>;
 
   return (
     <div className="min-h-screen bg-[#0f172a] flex flex-col md:flex-row">
@@ -346,7 +384,7 @@ const App: React.FC = () => {
           {activeTab === 'suggestions' && <WorkerStats history={history} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={INITIAL_PRAISE_LIST} history={history} />}
-          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} />}
+          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>
       </main>
     </div>
