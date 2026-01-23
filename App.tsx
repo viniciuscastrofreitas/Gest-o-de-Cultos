@@ -70,6 +70,7 @@ const App: React.FC = () => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 
+        // Se houver usuário logado, tentamos baixar a versão da nuvem para o aparelho
         if (currentUser) {
           const { data: cloudData } = await supabase
             .from('user_data')
@@ -79,12 +80,10 @@ const App: React.FC = () => {
 
           if (cloudData?.json_data) {
             const cloud = cloudData.json_data;
-            if (localData?.history?.length === 0 && cloud.history?.length > 0) {
-              setHistory(cloud.history || []);
-              setCustomSongs(cloud.customSongs || []);
-              setLearningList(cloud.learningList || []);
-              if (cloud.draft) setDraft(cloud.draft);
-            }
+            setHistory(cloud.history || []);
+            setCustomSongs(cloud.customSongs || []);
+            setLearningList(cloud.learningList || []);
+            if (cloud.draft) setDraft(cloud.draft);
           }
         }
       } catch (e) {
@@ -96,8 +95,25 @@ const App: React.FC = () => {
     };
     setup();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+
+      if (event === 'SIGNED_IN' && newUser) {
+        const { data: cloudData } = await supabase
+          .from('user_data')
+          .select('json_data')
+          .eq('user_id', newUser.id)
+          .maybeSingle();
+
+        if (cloudData?.json_data) {
+          const cloud = cloudData.json_data;
+          setHistory(cloud.history || []);
+          setCustomSongs(cloud.customSongs || []);
+          setLearningList(cloud.learningList || []);
+          if (cloud.draft) setDraft(cloud.draft);
+        }
+      }
     });
 
     return () => {
@@ -112,6 +128,7 @@ const App: React.FC = () => {
     saveData({ history, customSongs, draft, learningList });
   }, [history, customSongs, draft, learningList, isLoading]);
 
+  // Sincronização automática (Last Writer Wins)
   useEffect(() => {
     if (!isReadyForCloudSync || !user || isOffline) {
       if (user && isOffline) setSyncStatus('local');
@@ -134,7 +151,7 @@ const App: React.FC = () => {
       } catch (e) {
         setSyncStatus('local');
       }
-    }, 2000);
+    }, 3000);
 
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
@@ -150,6 +167,7 @@ const App: React.FC = () => {
         json_data: { history, customSongs, learningList, draft },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
+      
       if (error) throw error;
       setSyncStatus('synced');
       setShowSyncSuccess(true);
@@ -171,10 +189,11 @@ const App: React.FC = () => {
     try {
       const { data } = await supabase.from('user_data').select('json_data').eq('user_id', user.id).maybeSingle();
       if (data?.json_data) {
-        setHistory(data.json_data.history || []);
-        setCustomSongs(data.json_data.customSongs || []);
-        setLearningList(data.json_data.learningList || []);
-        if (data.json_data.draft) setDraft(data.json_data.draft);
+        const cloud = data.json_data;
+        setHistory(cloud.history || []);
+        setCustomSongs(cloud.customSongs || []);
+        setLearningList(cloud.learningList || []);
+        if (cloud.draft) setDraft(cloud.draft);
         setShowRestoreSuccess(true);
       }
     } catch (e) {
@@ -397,19 +416,19 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-[#1a1c3d]/95 backdrop-blur-xl animate-fadeIn" onClick={() => setShowCloudRestoreConfirm(false)} />
           <div className="relative bg-white border border-white rounded-[3rem] p-10 w-full max-w-sm shadow-2xl animate-scaleUp text-center">
-            <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-amber-500 shadow-xl shadow-amber-400/10">
+            <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-rose-500 shadow-xl shadow-rose-400/10">
               <span className="material-icons text-4xl">cloud_download</span>
             </div>
-            <h2 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter">Restaurar Nuvem?</h2>
+            <h2 className="text-[#1a1c3d] font-black text-2xl uppercase tracking-tighter">Substituir por Nuvem?</h2>
             <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-4 leading-relaxed px-4">
-              Isso substituirá seus dados locais pela versão da nuvem (incluindo rascunhos). <span className="text-rose-500 font-black">Esta ação é definitiva.</span>
+              O sistema irá apagar seus dados locais e baixar a versão da nuvem. <span className="text-rose-500 font-black">Esta ação é definitiva e não pode ser desfeita.</span>
             </p>
             <div className="mt-10 space-y-3">
               <button 
                 onClick={executeManualDownload}
                 className="w-full py-5 bg-[#1a1c3d] text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"
               >
-                SIM, RESTAURAR AGORA
+                SIM, BAIXAR E SUBSTITUIR
               </button>
               <button 
                 onClick={() => setShowCloudRestoreConfirm(false)}
@@ -429,8 +448,8 @@ const App: React.FC = () => {
             <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
               <span className="material-icons text-4xl">cloud_done</span>
             </div>
-            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Dados Recuperados!</h3>
-            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Sincronização concluída com sucesso.</p>
+            <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Dados Baixados!</h3>
+            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Sua base local foi atualizada pela nuvem.</p>
             <button 
               onClick={() => setShowRestoreSuccess(false)} 
               className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
@@ -449,7 +468,7 @@ const App: React.FC = () => {
               <span className="material-icons text-4xl">cloud_done</span>
             </div>
             <h3 className="text-2xl font-black text-[#1a1c3d] mb-2 uppercase tracking-tighter">Sincronizado!</h3>
-            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">Seus dados foram salvos na nuvem.</p>
+            <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-8">A nuvem agora contém os dados deste aparelho.</p>
             <button 
               onClick={() => setShowSyncSuccess(false)} 
               className="w-full py-5 bg-[#1a1c3d] text-white font-black rounded-3xl shadow-lg active:scale-95 transition-all uppercase text-xs tracking-widest"
