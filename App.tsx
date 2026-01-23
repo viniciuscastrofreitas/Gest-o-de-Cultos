@@ -23,11 +23,10 @@ const App: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local'>('local');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>('local');
   
-  // Flag crucial para evitar sobrescrever a nuvem com dados vazios no início
   const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
-
+  const lastCloudSyncRef = useRef<string | null>(null);
   const syncTimeoutRef = useRef<number | null>(null);
 
   const getTodayDate = () => {
@@ -44,20 +43,26 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
-  // 1. Inicialização e Monitoramento de Auth
+  // 1. Inicialização, Auth e Realtime Subscription
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Carregar sessão inicial
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) setHasCheckedCloud(false); // Reset ao deslogar
+    // Monitorar mudanças de Auth
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+      if (!newUser) {
+        setHasCheckedCloud(false);
+        setSyncStatus('local');
+      }
     });
 
     const setup = async () => {
@@ -71,7 +76,7 @@ const App: React.FC = () => {
           if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
         }
       } catch (e) {
-        console.error("Erro no DB", e);
+        console.error("Erro no DB Local", e);
       } finally {
         setIsLoading(false);
       }
@@ -81,37 +86,70 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      subscription.unsubscribe();
+      authSub.unsubscribe();
     };
   }, []);
 
-  // 2. Auto-Restore ao logar (Proteção contra perda de dados)
+  // 2. Ouvinte de Realtime (Ouvir mudanças de outros dispositivos)
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`sync-changes-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_data',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: any) => {
+          if (payload.new && payload.new.json_data) {
+            const remote = payload.new.json_data;
+            const remoteUpdate = payload.new.updated_at;
+            
+            // Se a atualização da nuvem for diferente da nossa última sincronização conhecida
+            if (remoteUpdate !== lastCloudSyncRef.current) {
+              lastCloudSyncRef.current = remoteUpdate;
+              setHistory(remote.history || []);
+              setCustomSongs(remote.customSongs || []);
+              setLearningList(remote.learningList || []);
+              setSyncStatus('synced');
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  // 3. Auto-Restore ao logar (Puxar versão mestre)
   useEffect(() => {
     if (user && !isLoading && !hasCheckedCloud) {
       const autoRestore = async () => {
         try {
           const { data, error } = await supabase
             .from('user_data')
-            .select('json_data')
+            .select('json_data, updated_at')
             .eq('user_id', user.id)
             .maybeSingle();
 
           if (error) throw error;
 
           if (data?.json_data) {
-            const cloud = data.json_data;
-            // Só restaura se o local estiver vazio para não causar confusão,
-            // ou se o usuário acabou de logar em um dispositivo limpo.
-            if (history.length === 0) {
-              setHistory(cloud.history || []);
-              setCustomSongs(cloud.customSongs || []);
-              setLearningList(cloud.learningList || []);
-            }
+            lastCloudSyncRef.current = data.updated_at;
+            setHistory(data.json_data.history || []);
+            setCustomSongs(data.json_data.customSongs || []);
+            setLearningList(data.json_data.learningList || []);
           }
         } catch (e) {
           console.error("Erro ao verificar nuvem:", e);
         } finally {
-          setHasCheckedCloud(true); // Agora é seguro sincronizar local -> nuvem
+          setHasCheckedCloud(true);
           setSyncStatus('synced');
         }
       };
@@ -119,33 +157,38 @@ const App: React.FC = () => {
     }
   }, [user, isLoading, hasCheckedCloud]);
 
-  // 3. Auto-Sync Controlado
+  // 4. Auto-Sync Controlado (Local -> Nuvem)
   useEffect(() => {
     if (isLoading) return;
 
-    // Salva Localmente Sempre
+    // Salva Localmente Sempre para persistência offline
     saveData({ history, customSongs, draft, learningList });
 
-    // Sincronização Cloud só ocorre após a verificação inicial (hasCheckedCloud)
+    // Só sincroniza se estiver logado, online e após a verificação inicial
     if (user && !isOffline && hasCheckedCloud) {
-      setSyncStatus('syncing');
+      // Evitar loops: se os dados locais são idênticos aos que acabamos de receber, não re-enviar
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+      
+      setSyncStatus('syncing');
       
       syncTimeoutRef.current = window.setTimeout(async () => {
         try {
+          const timestamp = new Date().toISOString();
           const { error } = await supabase.from('user_data').upsert({ 
             user_id: user.id, 
             json_data: { history, customSongs, learningList },
-            updated_at: new Date().toISOString()
+            updated_at: timestamp
           }, { onConflict: 'user_id' });
           
           if (error) throw error;
+          
+          lastCloudSyncRef.current = timestamp;
           setSyncStatus('synced');
         } catch (e) {
           console.error("Falha no Auto-Sync:", e);
-          setSyncStatus('local'); // Indica que não está garantido na nuvem
+          setSyncStatus('error');
         }
-      }, 3000); // 3 segundos de delay para poupar bateria/dados
+      }, 3000);
     } else if (!user) {
       setSyncStatus('local');
     }
@@ -198,28 +241,51 @@ const App: React.FC = () => {
     window.scrollTo(0,0);
   };
 
-  const AppBrand = () => (
-    <div className="flex items-center gap-5">
-      <div className="w-16 h-16 bg-white rounded-2xl shadow-xl flex items-center justify-center p-2.5">
-        <img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" alt="Logo" className="w-full h-full object-contain" />
-      </div>
-      <div className="flex flex-col">
-        <div className="flex items-center gap-2">
-           <span className={`material-icons text-[14px] ${syncStatus === 'synced' ? 'text-emerald-400' : syncStatus === 'syncing' ? 'text-amber-400 animate-spin' : 'text-white/20'}`}>
-             {syncStatus === 'synced' ? 'cloud_done' : syncStatus === 'syncing' ? 'sync' : 'cloud_off'}
-           </span>
-           <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">
-             {syncStatus === 'synced' ? 'Nuvem OK' : syncStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
-           </span>
+  const AppBrand = () => {
+    const statusIcon = {
+      synced: 'cloud_done',
+      syncing: 'sync',
+      local: 'cloud_off',
+      error: 'cloud_off'
+    }[syncStatus];
+    
+    const statusColor = {
+      synced: 'text-emerald-400',
+      syncing: 'text-amber-400 animate-spin',
+      local: 'text-white/20',
+      error: 'text-rose-500'
+    }[syncStatus];
+
+    const statusText = {
+      synced: 'Nuvem OK',
+      syncing: 'Sincronizando...',
+      local: 'Local Only',
+      error: 'Erro de Conexão'
+    }[syncStatus];
+
+    return (
+      <div className="flex items-center gap-5">
+        <div className="w-16 h-16 bg-white rounded-2xl shadow-xl flex items-center justify-center p-2.5">
+          <img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" alt="Logo" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
-        <div className="mt-1 bg-white/10 self-start px-3 py-1 rounded-full flex items-center gap-2">
-           <span className="material-icons text-amber-400 text-xs">analytics</span>
-           <span className="text-white font-black text-[10px] uppercase">{history.length} Cultos</span>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+             <span className={`material-icons text-[14px] ${statusColor}`}>
+               {statusIcon}
+             </span>
+             <span className="text-white/60 font-black text-[10px] tracking-[0.2em] uppercase">
+               {statusText}
+             </span>
+          </div>
+          <h1 className="text-white font-black text-xl tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
+          <div className="mt-1 bg-white/10 self-start px-3 py-1 rounded-full flex items-center gap-2">
+             <span className="material-icons text-amber-400 text-xs">analytics</span>
+             <span className="text-white font-black text-[10px] uppercase">{history.length} Cultos</span>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const UserProfile = () => {
     if (!user) return null;
@@ -229,12 +295,12 @@ const App: React.FC = () => {
           {user.user_metadata?.avatar_url ? (
             <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
-            <span className="material-icons text-white text-xl">person</span>
+            <span className="material-icons text-indigo-400 text-xl">person</span>
           )}
         </div>
         <div className="flex flex-col min-w-0">
           <span className="text-white font-black text-[10px] uppercase truncate">{user.user_metadata?.full_name || user.email}</span>
-          <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Sincronizado</span>
+          <span className="text-white/30 font-bold text-[8px] uppercase tracking-widest">Multi-Dispositivo ON</span>
         </div>
       </div>
     );
