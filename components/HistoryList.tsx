@@ -102,7 +102,9 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
   };
 
   const handleWhatsAppShare = (title: string, records: ServiceRecord[]) => {
-    const text = records.map(r => generateSingleReport(r)).join('\n' + '─'.repeat(15) + '\n');
+    // Sort ascending for the report: oldest to newest
+    const reportData = [...records].sort((a, b) => a.date.localeCompare(b.date));
+    const text = reportData.map(r => generateSingleReport(r)).join('\n' + '─'.repeat(15) + '\n');
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
     setShowShareOptions(false);
   };
