@@ -96,7 +96,9 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
 
   const handleShareHinosOnly = () => {
     if (draft.songs.length === 0) return;
-    const text = `🎶 *LISTA DE LOUVORES*\n` + 
+    const d = new Date(draft.date + 'T12:00:00');
+    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const text = `🎶 *LISTA DE LOUVORES - ${dateStr}*\n\n` + 
       draft.songs.map((s, i) => `${i + 1}. ${s}`).join('\n');
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
   };

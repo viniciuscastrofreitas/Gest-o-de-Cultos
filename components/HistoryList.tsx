@@ -57,7 +57,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       filtered = filtered.filter(r => {
-        const d = new Date(r.date + 'T12:00:00');
         const badge = getSpecialBadge(r.date);
         return (
           r.date.includes(lowerSearch) ||
@@ -102,7 +101,6 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
   };
 
   const handleWhatsAppShare = (title: string, records: ServiceRecord[]) => {
-    // Sort ascending for the report: oldest to newest
     const reportData = [...records].sort((a, b) => a.date.localeCompare(b.date));
     const text = reportData.map(r => generateSingleReport(r)).join('\n' + '─'.repeat(15) + '\n');
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
@@ -123,7 +121,7 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
           <span className={`material-icons text-[10px] ${isHighlighted ? 'text-indigo-600' : 'text-slate-500'}`}>{icon}</span>
           <span className={`text-[8px] font-black uppercase tracking-widest ${isHighlighted ? 'text-indigo-600' : 'text-slate-500'}`}>{label}</span>
         </div>
-        <span className={`text-[11px] font-black truncate ${isHighlighted ? 'text-indigo-800' : 'text-slate-900'}`}>{value}</span>
+        <span className={`text-[11px] font-black ${isHighlighted ? 'text-indigo-800' : 'text-slate-900'}`}>{value}</span>
       </div>
     );
   };
@@ -189,8 +187,8 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
                           <span className="text-sm font-black text-indigo-600 leading-none">{new Date(record.date + 'T12:00:00').getDate()}</span>
                           <span className="text-[9px] font-bold text-slate-400 uppercase">{dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}</span>
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="font-black text-slate-900 uppercase text-base tracking-tight truncate">{record.description}</h4>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-black text-slate-900 uppercase text-base tracking-tight">{record.description}</h4>
                           <div className="flex items-center gap-2 mt-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p></div>
                         </div>
                       </div>
@@ -215,6 +213,21 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
                       <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
                       <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
                     </div>
+
+                    {/* LISTAGEM DE LOUVORES NO CARD - SEM TRUNCATE */}
+                    {record.songs.length > 0 && (
+                      <div className="mt-2 pt-5 border-t border-slate-50">
+                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] block mb-3">Louvores do Culto</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                          {record.songs.map((song, i) => (
+                            <div key={i} className="flex items-start gap-3">
+                              <span className="text-[10px] font-black text-indigo-300 mt-0.5">{(i + 1).toString().padStart(2, '0')}</span>
+                              <span className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{song}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
