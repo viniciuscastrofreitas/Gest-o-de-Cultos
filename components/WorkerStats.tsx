@@ -1,9 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
-import { WORKERS_LIST } from '../constants';
 
-interface Props { history: ServiceRecord[]; }
+interface Props { history: ServiceRecord[]; workers: string[]; }
 
 const CULTOS = [
   { id: 'SEG', label: 'SEGUNDA', fullName: 'SEGUNDA-FEIRA', roles: ['gate', 'praise'] },
@@ -15,11 +14,11 @@ const CULTOS = [
   { id: 'DOM', label: 'DOM', fullName: 'DOM', roles: ['gate', 'praise', 'word'] }
 ];
 
-const WorkerStats: React.FC<Props> = ({ history }) => {
+const WorkerStats: React.FC<Props> = ({ history, workers }) => {
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedRoles, setExpandedRoles] = useState<Record<string, boolean>>({});
 
-  const officialWorkers = useMemo(() => WORKERS_LIST.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name)), []);
+  const officialWorkers = useMemo(() => workers.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name)), [workers]);
 
   const getStats = (dayFullName: string, role: 'gate' | 'praise' | 'word') => {
     const today = new Date(); today.setHours(12, 0, 0, 0);

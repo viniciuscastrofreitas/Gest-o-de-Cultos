@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ServiceRecord, SongStats, ServiceDraft } from '../types';
-import { WORKERS_LIST } from '../constants';
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3 text-center md:text-left">{children}</label>
@@ -17,6 +16,7 @@ interface Props {
   onSave: (record: Omit<ServiceRecord, 'id'>) => void;
   songStats: Record<string, SongStats>;
   fullSongList: string[];
+  workers: string[];
   onRegisterNewSong: (song: string) => void;
   draft: ServiceDraft;
   setDraft: React.Dispatch<React.SetStateAction<ServiceDraft>>;
@@ -24,7 +24,7 @@ interface Props {
   onCancelEdit: () => void;
 }
 
-const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegisterNewSong, draft, setDraft, editingId, onCancelEdit }) => {
+const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers, onRegisterNewSong, draft, setDraft, editingId, onCancelEdit }) => {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pendingSong, setPendingSong] = useState<{name: string, diff: number, lastDate: string} | null>(null);
@@ -268,7 +268,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                 <FormInput>
                   <select value={draft.roles.gate} onChange={e => updateRole('gate', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                     <option value="">Selecione...</option>
-                    {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
+                    {workers.map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </FormInput>
               </div>
@@ -280,7 +280,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                     <FormInput>
                       <select value={draft.roles.praise} onChange={e => updateRole('praise', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                         <option value="">Selecione...</option>
-                        {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
+                        {workers.map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
                     </FormInput>
                   </div>
@@ -291,7 +291,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, onRegis
                       <FormInput>
                         <select value={draft.roles.word} onChange={e => updateRole('word', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
                           <option value="">Selecione...</option>
-                          {WORKERS_LIST.map(n => <option key={n} value={n}>{n}</option>)}
+                          {workers.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </FormInput>
                     </div>

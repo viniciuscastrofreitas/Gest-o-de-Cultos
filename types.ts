@@ -38,7 +38,9 @@ export interface PraiseLearningItem {
 
 export interface AppData {
   history: ServiceRecord[];
+  churchName?: string;
   customSongs?: string[];
+  customWorkers?: string[];
   draft?: ServiceDraft;
   learningList?: PraiseLearningItem[];
 }

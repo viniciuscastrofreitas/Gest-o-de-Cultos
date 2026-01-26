@@ -1,7 +1,8 @@
+
 {
   "name": "Relatório de Culto",
   "short_name": "Relatório",
-  "description": "Gestão de louvores para ICM Santo Antônio II",
+  "description": "Gestão de louvores para Igreja Cristã Maranata",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

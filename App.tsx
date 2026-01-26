@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { INITIAL_PRAISE_LIST } from './constants';
+import { INITIAL_PRAISE_LIST, DEFAULT_WORKERS_LIST } from './constants';
 import { ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './types';
 import ServiceForm from './components/ServiceForm';
 import HistoryList from './components/HistoryList';
@@ -10,14 +10,18 @@ import UnplayedList from './components/UnplayedList';
 import WorkerStats from './components/WorkerStats';
 import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
+import WorkerManager from './components/WorkerManager';
 import AuthForm from './components/AuthForm';
 import { initDB, saveData, loadData } from './db';
 import { supabase } from './supabase';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'settings'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'manage-workers' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>([]);
+  const [churchName, setChurchName] = useState('Clique aqui para nomear sua igreja');
+  const [isEditingChurchName, setIsEditingChurchName] = useState(false);
   const [customSongs, setCustomSongs] = useState<string[]>([]);
+  const [customWorkers, setCustomWorkers] = useState<string[]>(DEFAULT_WORKERS_LIST);
   const [learningList, setLearningList] = useState<PraiseLearningItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState('Iniciando sistema...');
@@ -57,7 +61,6 @@ const App: React.FC = () => {
     roles: { ...emptyRoles }
   });
 
-  // Função para buscar dados da nuvem e aplicar se forem mais novos
   const pullFromCloud = async (userId: string) => {
     try {
       setSyncStatus('syncing');
@@ -75,7 +78,9 @@ const App: React.FC = () => {
           lastCloudUpdateRef.current = cloudTimestamp;
           const remote = data.json_data;
           if (remote.history) setHistory(remote.history);
+          if (remote.churchName) setChurchName(remote.churchName);
           if (remote.customSongs) setCustomSongs(remote.customSongs);
+          if (remote.customWorkers) setCustomWorkers(remote.customWorkers);
           if (remote.learningList) setLearningList(remote.learningList);
         }
       }
@@ -93,7 +98,7 @@ const App: React.FC = () => {
       const timestamp = new Date().toISOString();
       const { error } = await supabase.from('user_data').upsert({ 
         user_id: user.id, 
-        json_data: { history, customSongs, learningList },
+        json_data: { history, churchName, customSongs, customWorkers, learningList },
         updated_at: timestamp
       }, { onConflict: 'user_id' });
       
@@ -139,7 +144,9 @@ const App: React.FC = () => {
         if (data) {
           setLoadingStatus('Organizando informações...');
           if (data.history) setHistory(data.history);
+          if (data.churchName) setChurchName(data.churchName);
           if (data.customSongs) setCustomSongs(data.customSongs);
+          if (data.customWorkers) setCustomWorkers(data.customWorkers);
           if (data.learningList) setLearningList(data.learningList);
           if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
         }
@@ -187,7 +194,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    saveData({ history, customSongs, draft, learningList });
+    saveData({ history, churchName, customSongs, customWorkers, draft, learningList });
     if (user && !isOffline && hasCheckedCloud) {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       setSyncStatus('syncing');
@@ -202,7 +209,7 @@ const App: React.FC = () => {
     } else if (!user) {
       setSyncStatus('local');
     }
-  }, [history, customSongs, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
+  }, [history, churchName, customSongs, customWorkers, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
 
   const fullSongList = useMemo(() => {
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
@@ -242,6 +249,7 @@ const App: React.FC = () => {
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Sugestão Escala' },
+    { id: 'manage-workers', icon: 'person_add', label: 'Gerenciar Obreiros' },
     { id: 'settings', icon: 'settings', label: 'Backup / Nuvem' },
   ] as const;
 
@@ -261,8 +269,22 @@ const App: React.FC = () => {
         <div className="w-12 h-12 bg-white rounded-xl shadow-xl flex items-center justify-center p-2 shrink-0">
           <img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" alt="Logo" className="w-full h-full object-contain" />
         </div>
-        <div className="flex flex-col min-w-0">
-          <h1 className="text-white font-black text-lg tracking-tighter leading-tight uppercase whitespace-nowrap">Santo Antônio II</h1>
+        <div className="flex flex-col min-w-0 flex-1">
+          {isEditingChurchName ? (
+            <input 
+              autoFocus
+              className="bg-white/10 border-b border-white/30 text-white font-black text-lg outline-none w-full uppercase"
+              value={churchName}
+              onChange={(e) => setChurchName(e.target.value)}
+              onBlur={() => setIsEditingChurchName(false)}
+              onKeyDown={(e) => e.key === 'Enter' && setIsEditingChurchName(false)}
+            />
+          ) : (
+            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingChurchName(true)}>
+              <h1 className="text-white font-black text-lg tracking-tighter leading-tight uppercase whitespace-nowrap overflow-hidden text-ellipsis">{churchName}</h1>
+              <span className="material-icons text-white/20 text-xs group-hover:text-white/60 transition-colors">edit</span>
+            </div>
+          )}
           <div className="flex items-center gap-2 mt-0.5">
              <div className="flex items-center gap-1.5">
                <span className={`material-icons text-[12px] ${statusColor}`}>{statusIcon}</span>
@@ -314,7 +336,7 @@ const App: React.FC = () => {
       </div>
       <div className="flex flex-col items-center gap-5 max-w-xs w-full relative z-10">
         <div className="text-center">
-          <h2 className="font-black tracking-[0.3em] text-[10px] uppercase text-slate-400 mb-1">ICM Santo Antônio II</h2>
+          <h2 className="font-black tracking-[0.3em] text-[10px] uppercase text-slate-400 mb-1">{churchName}</h2>
           <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.4em]">Gestão Eclesiástica</p>
         </div>
         <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden relative">
@@ -417,11 +439,12 @@ const App: React.FC = () => {
       <main className="flex-1 min-w-0">
         {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-0 z-[190] shadow-lg">Você está operando offline.</div>}
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
-          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
+          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} />}
           {activeTab === 'learning' && <PraiseLearningList fullSongList={fullSongList} learningList={learningList} setLearningList={setLearningList} />}
-          {activeTab === 'workers' && <WorkerRanking history={history} />}
-          {activeTab === 'suggestions' && <WorkerStats history={history} />}
+          {activeTab === 'workers' && <WorkerRanking history={history} workers={customWorkers} />}
+          {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
+          {activeTab === 'manage-workers' && <WorkerManager workers={customWorkers} setWorkers={setCustomWorkers} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={INITIAL_PRAISE_LIST} history={history} />}
           {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}

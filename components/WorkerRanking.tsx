@@ -1,17 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
-import { WORKERS_LIST } from '../constants';
 
 interface WorkerEvent { date: string; description: string; }
-interface Props { history: ServiceRecord[]; }
+interface Props { history: ServiceRecord[]; workers: string[]; }
 
-const WorkerRanking: React.FC<Props> = ({ history }) => {
+const WorkerRanking: React.FC<Props> = ({ history, workers }) => {
   const [modalData, setModalData] = useState<{ worker: string, role: string, events: WorkerEvent[] } | null>(null);
 
   const stats = useMemo(() => {
     const data: Record<string, { gate: WorkerEvent[], praise: WorkerEvent[], word: WorkerEvent[], total: number }> = {};
-    const officialWorkers = WORKERS_LIST.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name));
+    const officialWorkers = workers.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name));
     officialWorkers.forEach(name => { data[name] = { gate: [], praise: [], word: [], total: 0 }; });
 
     history.forEach(r => {
@@ -29,7 +28,7 @@ const WorkerRanking: React.FC<Props> = ({ history }) => {
     });
 
     return Object.entries(data).map(([name, val]) => ({ name, ...val })).sort((a, b) => b.total - a.total);
-  }, [history]);
+  }, [history, workers]);
 
   const StatBox = ({ label, count, onClick, icon }: { label: string, count: number, onClick: () => void, icon: string }) => (
     <button 
