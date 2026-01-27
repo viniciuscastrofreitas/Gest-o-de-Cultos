@@ -117,6 +117,35 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
     setDraft(prev => ({ ...prev, roles: { ...prev.roles, [role]: name } }));
   };
 
+  const updateAttendance = (field: keyof typeof draft.attendance, val: string) => {
+    const num = parseInt(val) || 0;
+    setDraft(prev => ({ 
+      ...prev, 
+      attendance: { ...prev.attendance, [field]: num } 
+    }));
+  };
+
+  const totals = useMemo(() => {
+    const att = draft.attendance || {};
+    if (draft.description === 'EBD') {
+      const totalMembers = (att.ebdMembersAdult || 0) + (att.ebdMembersCias || 0);
+      const totalVisitors = (att.ebdVisitorsAdult || 0) + (att.ebdVisitorsCias || 0);
+      return { 
+        totalMembers, 
+        totalVisitors, 
+        grandTotal: totalMembers + totalVisitors 
+      };
+    } else {
+      const members = att.members || 0;
+      const visitors = att.visitors || 0;
+      return { 
+        totalMembers: members, 
+        totalVisitors: visitors, 
+        grandTotal: members + visitors 
+      };
+    }
+  }, [draft.attendance, draft.description]);
+
   const handleAddGateWorker = (name: string) => {
     if (!name || selectedGateWorkers.some(w => w.name === name)) return;
     const newList = [...selectedGateWorkers, { name, isAlpendre: false }];
@@ -399,7 +428,64 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
               )}
             </div>
 
-            <button onClick={handleSave} disabled={draft.songs.length === 0 && !dateInfo.isWednesday} className={`w-full py-6 rounded-3xl font-black text-sm tracking-[0.2em] transition-all active:scale-95 flex items-center justify-center gap-3 shadow-2xl ${draft.songs.length > 0 || dateInfo.isWednesday ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>
+            {/* SEÇÃO FREQUÊNCIA DE CULTO (Movida para depois do Texto Bíblico) */}
+            <div className="space-y-6 pt-8 border-t border-slate-100">
+              <Label>Frequência de Culto</Label>
+              
+              {draft.description === 'EBD' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block text-center">Membros</span>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.ebdMembersAdult || ''} onChange={e => updateAttendance('ebdMembersAdult', e.target.value)} placeholder="ADULTOS" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.ebdMembersCias || ''} onChange={e => updateAttendance('ebdMembersCias', e.target.value)} placeholder="CIAS" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                    <div className="bg-indigo-50 p-2 rounded-xl text-center border border-indigo-100">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase">Total: {totals.totalMembers}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block text-center">Visitantes</span>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.ebdVisitorsAdult || ''} onChange={e => updateAttendance('ebdVisitorsAdult', e.target.value)} placeholder="ADULTOS" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.ebdVisitorsCias || ''} onChange={e => updateAttendance('ebdVisitorsCias', e.target.value)} placeholder="CIAS" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                    <div className="bg-emerald-50 p-2 rounded-xl text-center border border-emerald-100">
+                      <span className="text-[10px] font-black text-emerald-600 uppercase">Total: {totals.totalVisitors}</span>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2 bg-slate-900 rounded-3xl p-4 flex justify-between items-center shadow-xl">
+                    <span className="text-white font-black text-[11px] uppercase tracking-widest">Total Presentes</span>
+                    <span className="text-white font-black text-xl">{totals.grandTotal}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block text-center">Membros</span>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.members || ''} onChange={e => updateAttendance('members', e.target.value)} placeholder="0" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block text-center">Visitantes</span>
+                    <FormInput>
+                      <input type="number" value={draft.attendance?.visitors || ''} onChange={e => updateAttendance('visitors', e.target.value)} placeholder="0" className="w-full bg-transparent font-black text-center outline-none py-2" />
+                    </FormInput>
+                  </div>
+                  <div className="sm:col-span-2 bg-slate-900 rounded-3xl p-4 flex justify-between items-center shadow-xl">
+                    <span className="text-white font-black text-[11px] uppercase tracking-widest">Total Presentes</span>
+                    <span className="text-white font-black text-xl">{totals.grandTotal}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={handleSave} disabled={draft.songs.length === 0 && !dateInfo.isWednesday} className={`w-full py-6 rounded-3xl font-black text-sm tracking-[0.2em] transition-all active:scale-95 flex items-center justify-center gap-3 shadow-2xl mt-8 ${draft.songs.length > 0 || dateInfo.isWednesday ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>
               <span className="material-icons">save</span>
               {editingId ? 'ATUALIZAR' : 'SALVAR RELATÓRIO'}
             </button>

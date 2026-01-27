@@ -6,12 +6,22 @@ export interface ServiceRoles {
   scripture: string; // Texto Bíblico (Livro e versículo digitados)
 }
 
+export interface ServiceAttendance {
+  members?: number;
+  visitors?: number;
+  ebdMembersAdult?: number;
+  ebdMembersCias?: number;
+  ebdVisitorsAdult?: number;
+  ebdVisitorsCias?: number;
+}
+
 export interface ServiceRecord {
   id: string;
   date: string;
   description: string; // EBD, DOM, ou Dia da Semana
   songs: string[];
   roles: ServiceRoles;
+  attendance?: ServiceAttendance;
 }
 
 export interface ServiceDraft {
@@ -19,6 +29,7 @@ export interface ServiceDraft {
   description: string;
   songs: string[];
   roles: ServiceRoles;
+  attendance?: ServiceAttendance;
 }
 
 export interface SongStats {

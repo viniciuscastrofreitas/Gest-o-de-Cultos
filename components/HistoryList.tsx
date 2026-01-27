@@ -93,6 +93,26 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
     } else if (r.roles.scripture) {
       text += `Texto: ${r.roles.scripture}\n`;
     }
+
+    if (r.attendance) {
+      const att = r.attendance;
+      if (r.description === 'EBD') {
+        const totalMembers = (att.ebdMembersAdult || 0) + (att.ebdMembersCias || 0);
+        const totalVisitors = (att.ebdVisitorsAdult || 0) + (att.ebdVisitorsCias || 0);
+        const grandTotal = totalMembers + totalVisitors;
+        if (grandTotal > 0) {
+          text += `\n*Frequência Total: ${grandTotal}*\n`;
+          text += `Membros: ${totalMembers} (A: ${att.ebdMembersAdult || 0} / C: ${att.ebdMembersCias || 0})\n`;
+          text += `Visitantes: ${totalVisitors} (A: ${att.ebdVisitorsAdult || 0} / C: ${att.ebdVisitorsCias || 0})\n`;
+        }
+      } else {
+        const total = (att.members || 0) + (att.visitors || 0);
+        if (total > 0) {
+          text += `\n*Frequência: ${total}* (${att.members || 0} Membros / ${att.visitors || 0} Visitantes)\n`;
+        }
+      }
+    }
+
     if (r.songs.length > 0) {
       text += `\nLOUVORES: \n`;
       r.songs.forEach((s, i) => { text += ` ${i + 1}. ${s}\n`; });
@@ -178,6 +198,19 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
           <div className="grid gap-5">
             {records.map(record => {
               const badge = getSpecialBadge(record.date);
+              
+              const att = record.attendance;
+              let attendanceText = "";
+              if (att) {
+                if (record.description === 'EBD') {
+                  const total = (att.ebdMembersAdult || 0) + (att.ebdMembersCias || 0) + (att.ebdVisitorsAdult || 0) + (att.ebdVisitorsCias || 0);
+                  if (total > 0) attendanceText = `${total} presentes`;
+                } else {
+                  const total = (att.members || 0) + (att.visitors || 0);
+                  if (total > 0) attendanceText = `${total} presentes`;
+                }
+              }
+
               return (
                 <div key={record.id} className="card-main p-6 md:p-10">
                   <div className="flex flex-col gap-6">
@@ -189,7 +222,18 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-black text-slate-900 uppercase text-base tracking-tight">{record.description}</h4>
-                          <div className="flex items-center gap-2 mt-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p></div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                            <div className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{record.songs.length} LOUVORES</p>
+                            </div>
+                            {attendanceText && (
+                              <div className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">{attendanceText}</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2.5 justify-end">
@@ -213,6 +257,35 @@ const HistoryList: React.FC<Props> = ({ history, onDelete, onEdit, externalFilte
                       <InfoTag label="Palavra" value={record.roles.word} icon="record_voice_over" roleId="word" />
                       <InfoTag label="Texto" value={record.roles.word === 'TRANSMISSÃO' ? 'SATÉLITE' : record.roles.scripture} icon="auto_stories" roleId="scripture" />
                     </div>
+
+                    {/* RESUMO DE FREQUÊNCIA NO CARD */}
+                    {att && (
+                       <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100/50">
+                         {record.description === 'EBD' ? (
+                           <div className="flex flex-wrap gap-x-6 gap-y-2">
+                             <div className="flex flex-col">
+                               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Membros</span>
+                               <span className="text-[10px] font-black text-slate-700">A: {att.ebdMembersAdult || 0} / C: {att.ebdMembersCias || 0}</span>
+                             </div>
+                             <div className="flex flex-col">
+                               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Visitantes</span>
+                               <span className="text-[10px] font-black text-slate-700">A: {att.ebdVisitorsAdult || 0} / C: {att.ebdVisitorsCias || 0}</span>
+                             </div>
+                           </div>
+                         ) : (
+                           <div className="flex gap-6">
+                             <div className="flex flex-col">
+                               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Membros</span>
+                               <span className="text-[10px] font-black text-slate-700">{att.members || 0}</span>
+                             </div>
+                             <div className="flex flex-col">
+                               <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Visitantes</span>
+                               <span className="text-[10px] font-black text-slate-700">{att.visitors || 0}</span>
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                    )}
 
                     {/* LISTAGEM DE LOUVORES NO CARD - SEM TRUNCATE */}
                     {record.songs.length > 0 && (

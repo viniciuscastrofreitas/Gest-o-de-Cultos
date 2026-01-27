@@ -58,7 +58,8 @@ const App: React.FC = () => {
     date: getTodayDate(),
     description: '',
     songs: [],
-    roles: { ...emptyRoles }
+    roles: { ...emptyRoles },
+    attendance: {}
   });
 
   const pullFromCloud = async (userId: string) => {
@@ -238,7 +239,7 @@ const App: React.FC = () => {
     } else {
       setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
     }
-    setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles } });
+    setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles }, attendance: {} });
   };
 
   const menuItems = [
