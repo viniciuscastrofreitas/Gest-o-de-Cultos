@@ -23,7 +23,21 @@ const WorkerStats: React.FC<Props> = ({ history, workers }) => {
   const getStats = (dayFullName: string, role: 'gate' | 'praise' | 'word') => {
     const today = new Date(); today.setHours(12, 0, 0, 0);
     return officialWorkers.map(name => {
-      const filtered = history.filter(r => r.description === dayFullName && r.roles[role] === name).sort((a, b) => b.date.localeCompare(a.date));
+      const filtered = history.filter(r => {
+        if (r.description !== dayFullName) return false;
+        
+        const value = r.roles[role];
+        if (!value) return false;
+
+        if (role === 'gate') {
+          // No portão, verificamos se o nome (sem o sufixo Alpendre) está na lista
+          const gateWorkers = value.split(', ').map(n => n.replace(' (Alpendre)', '').trim());
+          return gateWorkers.includes(name);
+        }
+        
+        return value === name;
+      }).sort((a, b) => b.date.localeCompare(a.date));
+      
       const lastDate = filtered[0]?.date || null;
       let daysSince = Infinity;
       if (lastDate) daysSince = Math.ceil((today.getTime() - new Date(lastDate + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24));

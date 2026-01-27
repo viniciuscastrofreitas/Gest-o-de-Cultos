@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
 
-interface WorkerEvent { date: string; description: string; }
+interface WorkerEvent { date: string; description: string; isAlpendre?: boolean; }
 interface Props { history: ServiceRecord[]; workers: string[]; }
 
 const WorkerRanking: React.FC<Props> = ({ history, workers }) => {
@@ -14,10 +14,22 @@ const WorkerRanking: React.FC<Props> = ({ history, workers }) => {
     officialWorkers.forEach(name => { data[name] = { gate: [], praise: [], word: [], total: 0 }; });
 
     history.forEach(r => {
-      const event = { date: r.date, description: r.description };
-      if (r.roles.gate && data[r.roles.gate]) data[r.roles.gate].gate.push(event);
-      if (r.roles.praise && data[r.roles.praise]) data[r.roles.praise].praise.push(event);
-      if (r.roles.word && data[r.roles.word]) data[r.roles.word].word.push(event);
+      const eventBase = { date: r.date, description: r.description };
+      
+      // Processamento do Portão (suporta múltiplos obreiros e identifica Alpendre)
+      if (r.roles.gate) {
+        const rawGateWorkers = r.roles.gate.split(', ');
+        rawGateWorkers.forEach(rawName => {
+          const isAlpendre = rawName.endsWith(' (Alpendre)');
+          const name = isAlpendre ? rawName.replace(' (Alpendre)', '').trim() : rawName.trim();
+          if (data[name]) {
+            data[name].gate.push({ ...eventBase, isAlpendre });
+          }
+        });
+      }
+
+      if (r.roles.praise && data[r.roles.praise]) data[r.roles.praise].praise.push({ ...eventBase });
+      if (r.roles.word && data[r.roles.word]) data[r.roles.word].word.push({ ...eventBase });
     });
 
     Object.keys(data).forEach(name => {
@@ -88,7 +100,12 @@ const WorkerRanking: React.FC<Props> = ({ history, workers }) => {
               {modalData.events.map((ev, i) => (
                 <div key={i} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-slate-100 transition-all hover:bg-slate-100">
                   <div className="flex flex-col">
-                    <span className="font-black text-slate-800 text-base leading-none mb-1">{new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                    <span className="font-black text-slate-800 text-base leading-none mb-1">
+                      {new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      {ev.isAlpendre && (
+                        <span className="ml-2 text-[8px] text-amber-500 font-black uppercase tracking-tighter">(Alpendre)</span>
+                      )}
+                    </span>
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{ev.description}</span>
                   </div>
                   <span className="material-icons text-emerald-500 text-lg">check_circle</span>

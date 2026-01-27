@@ -12,6 +12,11 @@ const FormInput = ({ children, className = "" }: { children?: React.ReactNode, c
   </div>
 );
 
+interface SelectedGateWorker {
+  name: string;
+  isAlpendre: boolean;
+}
+
 interface Props {
   onSave: (record: Omit<ServiceRecord, 'id'>) => void;
   songStats: Record<string, SongStats>;
@@ -30,6 +35,9 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
   const [pendingSong, setPendingSong] = useState<{name: string, diff: number, lastDate: string} | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Estado interno para múltiplos obreiros no portão
+  const [selectedGateWorkers, setSelectedGateWorkers] = useState<SelectedGateWorker[]>([]);
 
   const dayOfWeekNames = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
   const fullDayNames = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
@@ -85,6 +93,21 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
     };
   }, [draft.date]);
 
+  // Sincroniza o estado interno do portão ao carregar/editar rascunho
+  useEffect(() => {
+    if (draft.roles.gate) {
+      const parts = draft.roles.gate.split(', ');
+      const workersList = parts.map(part => {
+        const isAlpendre = part.endsWith(' (Alpendre)');
+        const name = isAlpendre ? part.replace(' (Alpendre)', '') : part;
+        return { name, isAlpendre };
+      });
+      setSelectedGateWorkers(workersList);
+    } else {
+      setSelectedGateWorkers([]);
+    }
+  }, [draft.roles.gate, editingId]);
+
   useEffect(() => {
     if (!dateInfo.isSunday && !editingId) setDraft(prev => ({ ...prev, description: dateInfo.fullName }));
     else if (dateInfo.isSunday && !editingId && !['EBD', 'DOM'].includes(draft.description)) setDraft(prev => ({ ...prev, description: 'DOM' }));
@@ -92,6 +115,30 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
 
   const updateRole = (role: keyof typeof draft.roles, name: string) => {
     setDraft(prev => ({ ...prev, roles: { ...prev.roles, [role]: name } }));
+  };
+
+  const handleAddGateWorker = (name: string) => {
+    if (!name || selectedGateWorkers.some(w => w.name === name)) return;
+    const newList = [...selectedGateWorkers, { name, isAlpendre: false }];
+    setSelectedGateWorkers(newList);
+    syncGateString(newList);
+  };
+
+  const handleRemoveGateWorker = (name: string) => {
+    const newList = selectedGateWorkers.filter(w => w.name !== name);
+    setSelectedGateWorkers(newList);
+    syncGateString(newList);
+  };
+
+  const handleToggleAlpendre = (name: string) => {
+    const newList = selectedGateWorkers.map(w => w.name === name ? { ...w, isAlpendre: !w.isAlpendre } : w);
+    setSelectedGateWorkers(newList);
+    syncGateString(newList);
+  };
+
+  const syncGateString = (list: SelectedGateWorker[]) => {
+    const gateStr = list.map(w => w.isAlpendre ? `${w.name} (Alpendre)` : w.name).join(', ');
+    updateRole('gate', gateStr);
   };
 
   const handleShareHinosOnly = () => {
@@ -123,7 +170,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
       const today = new Date(); today.setHours(12, 0, 0, 0);
       const diffDays = Math.ceil(Math.abs(today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
       
-      if (diffDays <= 30) { 
+      if (diffDays <= 50) { 
         setPendingSong({ name, diff: diffDays, lastDate: stats.lastDate }); 
         return; 
       }
@@ -252,7 +299,6 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
             </div>
 
             <div className="space-y-6 pt-8 border-t border-slate-100">
-              {/* FAIXA DE IDENTIDADE DO CULTO */}
               {dateInfo.specialName && (
                 <div className={`w-full py-4 px-6 ${dateInfo.specialBg} ${dateInfo.specialBorder} border rounded-2xl flex items-center justify-between shadow-sm animate-fadeIn mb-2`}>
                    <div className="flex items-center gap-3">
@@ -263,14 +309,54 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
                 </div>
               )}
 
-              <div className="flex flex-col">
+              {/* SEÇÃO PORTÃO (Múltiplos + Alpendre) */}
+              <div className="flex flex-col space-y-4">
                 <Label>Portão</Label>
-                <FormInput>
-                  <select value={draft.roles.gate} onChange={e => updateRole('gate', e.target.value)} className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2">
-                    <option value="">Selecione...</option>
-                    {workers.map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </FormInput>
+                <div className="flex gap-2">
+                  <FormInput className="flex-1">
+                    <select 
+                      value="" 
+                      onChange={e => handleAddGateWorker(e.target.value)} 
+                      className="w-full bg-transparent font-black text-base text-slate-900 text-center outline-none cursor-pointer py-2"
+                    >
+                      <option value="">Adicionar Obreiro...</option>
+                      {workers.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </FormInput>
+                </div>
+                
+                {/* Lista de Obreiros Selecionados no Portão */}
+                <div className="space-y-2">
+                  {selectedGateWorkers.map(w => (
+                    <div key={w.name} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-fadeIn">
+                      <div className="flex items-center gap-3">
+                        <span className="font-black text-slate-900 text-xs uppercase">{w.name}</span>
+                        {w.isAlpendre && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase rounded-full">Alpendre</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleToggleAlpendre(w.name)}
+                          className={`px-3 py-1.5 rounded-xl font-black text-[8px] uppercase tracking-widest transition-all ${w.isAlpendre ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+                        >
+                          ALPENDRE
+                        </button>
+                        <button 
+                          onClick={() => handleRemoveGateWorker(w.name)}
+                          className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-rose-500"
+                        >
+                          <span className="material-icons text-lg">close</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedGateWorkers.length === 0 && (
+                    <div className="text-center py-4 border-2 border-dashed border-slate-100 rounded-2xl">
+                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Nenhum obreiro no portão</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {!dateInfo.isWednesday && (
