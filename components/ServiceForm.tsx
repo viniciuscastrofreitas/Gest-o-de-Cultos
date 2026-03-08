@@ -32,7 +32,13 @@ interface Props {
 const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers, onRegisterNewSong, draft, setDraft, editingId, onCancelEdit }) => {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [pendingSong, setPendingSong] = useState<{name: string, diff: number, lastDate: string} | null>(null);
+  const [pendingSong, setPendingSong] = useState<{
+    name: string, 
+    diff: number | null, 
+    lastDate: string | null,
+    count: number,
+    history: string[]
+  } | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
@@ -194,15 +200,22 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
     if (!fullSongList.includes(name)) onRegisterNewSong(name);
     
     const stats = songStats[name];
-    if (stats && stats.lastDate) {
-      const lastDate = new Date(stats.lastDate + 'T12:00:00');
-      const today = new Date(); today.setHours(12, 0, 0, 0);
-      const diffDays = Math.ceil(Math.abs(today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays <= 50) { 
-        setPendingSong({ name, diff: diffDays, lastDate: stats.lastDate }); 
-        return; 
+    if (stats && stats.count > 0) {
+      let diffDays: number | null = null;
+      if (stats.lastDate) {
+        const lastDate = new Date(stats.lastDate + 'T12:00:00');
+        const today = new Date(); today.setHours(12, 0, 0, 0);
+        diffDays = Math.ceil(Math.abs(today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
       }
+      
+      setPendingSong({ 
+        name, 
+        diff: diffDays, 
+        lastDate: stats.lastDate,
+        count: stats.count,
+        history: stats.history || []
+      }); 
+      return;
     }
     executeAdd(name);
   };
@@ -496,14 +509,58 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
       {pendingSong && (
         <div className="fixed inset-0 z-[8000] flex flex-col justify-end">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPendingSong(null)} />
-          <div className="relative bg-white rounded-t-[3.5rem] p-10 pb-12 shadow-2xl animate-slideUp">
+          <div className="relative bg-white rounded-t-[3.5rem] p-10 pb-12 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto no-scrollbar">
             <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-10"></div>
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6 text-amber-500 border border-amber-100"><span className="material-icons text-4xl">warning</span></div>
-              <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Hino Recorrente</h3>
-              <p className="text-slate-500 font-bold mb-10 text-[11px] uppercase tracking-widest">Cantado há <span className="text-amber-500">{pendingSong.diff} dias</span>. Prosseguir?</p>
+              {pendingSong.diff !== null && pendingSong.diff <= 30 ? (
+                <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mb-6 text-rose-500 border border-rose-100 animate-pulse">
+                  <span className="material-icons text-4xl">warning</span>
+                </div>
+              ) : (
+                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6 text-indigo-500 border border-indigo-100">
+                  <span className="material-icons text-4xl">info</span>
+                </div>
+              )}
+              
+              <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">
+                {pendingSong.diff !== null && pendingSong.diff <= 30 ? 'Hino Recorrente' : 'Hino já Cantado'}
+              </h3>
+              
+              <div className="mb-8 space-y-4 w-full">
+                <div className="flex justify-center gap-4">
+                  <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
+                    <p className="text-xl font-black text-slate-900">{pendingSong.count}x</p>
+                  </div>
+                  {pendingSong.diff !== null && (
+                    <div className={`${pendingSong.diff <= 30 ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'} px-4 py-2 rounded-2xl border`}>
+                      <p className={`text-[10px] font-black ${pendingSong.diff <= 30 ? 'text-rose-400' : 'text-indigo-400'} uppercase tracking-widest mb-1`}>Última vez</p>
+                      <p className={`text-xl font-black ${pendingSong.diff <= 30 ? 'text-rose-600' : 'text-indigo-600'}`}>{pendingSong.diff} dias</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 w-full">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Histórico de Datas</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {pendingSong.history.slice(0, 6).map((date, idx) => {
+                      const d = new Date(date + 'T12:00:00');
+                      const formatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                      return (
+                        <div key={idx} className="bg-white px-3 py-2 rounded-xl border border-slate-100 text-[11px] font-bold text-slate-600">
+                          {formatted}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {pendingSong.history.length > 6 && (
+                    <p className="mt-3 text-[9px] font-black text-slate-300 uppercase tracking-widest">+ {pendingSong.history.length - 6} outras vezes</p>
+                  )}
+                </div>
+              </div>
+
               <div className="w-full flex flex-col gap-3">
-                <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl active:scale-95">ADICIONAR MESMO ASSIM</button>
+                <button onClick={() => executeAdd(pendingSong.name)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-all">ADICIONAR MESMO ASSIM</button>
                 <button onClick={() => setPendingSong(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
               </div>
             </div>
