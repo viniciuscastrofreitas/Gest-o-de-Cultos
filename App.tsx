@@ -11,16 +11,18 @@ import WorkerStats from './components/WorkerStats';
 import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
 import WorkerManager from './components/WorkerManager';
+import CollectionsManager from './components/CollectionsManager';
 import AuthForm from './components/AuthForm';
 import { initDB, saveData, loadData } from './db';
 import { supabase } from './supabase';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'manage-workers' | 'settings'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>([]);
   const [churchName, setChurchName] = useState('Clique aqui para nomear sua igreja');
   const [isEditingChurchName, setIsEditingChurchName] = useState(false);
   const [customSongs, setCustomSongs] = useState<string[]>([]);
+  const [praiseCollection, setPraiseCollection] = useState<string[]>([]);
   const [customWorkers, setCustomWorkers] = useState<string[]>(DEFAULT_WORKERS_LIST);
   const [learningList, setLearningList] = useState<PraiseLearningItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +85,7 @@ const App: React.FC = () => {
           if (remote.customSongs) setCustomSongs(remote.customSongs);
           if (remote.customWorkers) setCustomWorkers(remote.customWorkers);
           if (remote.learningList) setLearningList(remote.learningList);
+          if (remote.praiseCollection) setPraiseCollection(remote.praiseCollection);
         }
       }
       setSyncStatus('synced');
@@ -99,7 +102,7 @@ const App: React.FC = () => {
       const timestamp = new Date().toISOString();
       const { error } = await supabase.from('user_data').upsert({ 
         user_id: user.id, 
-        json_data: { history, churchName, customSongs, customWorkers, learningList },
+        json_data: { history, churchName, customSongs, customWorkers, learningList, praiseCollection },
         updated_at: timestamp
       }, { onConflict: 'user_id' });
       
@@ -149,6 +152,13 @@ const App: React.FC = () => {
           if (data.customSongs) setCustomSongs(data.customSongs);
           if (data.customWorkers) setCustomWorkers(data.customWorkers);
           if (data.learningList) setLearningList(data.learningList);
+          if (data.praiseCollection) {
+            setPraiseCollection(data.praiseCollection);
+          } else {
+            // Inicialização da Coletânea
+            const initial = [...new Set([...INITIAL_PRAISE_LIST, ...(data.customSongs || [])])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            setPraiseCollection(initial);
+          }
           if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
         }
         
@@ -195,7 +205,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    saveData({ history, churchName, customSongs, customWorkers, draft, learningList });
+    saveData({ history, churchName, customSongs, customWorkers, draft, learningList, praiseCollection });
     if (user && !isOffline && hasCheckedCloud) {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       setSyncStatus('syncing');
@@ -213,8 +223,16 @@ const App: React.FC = () => {
   }, [history, churchName, customSongs, customWorkers, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
 
   const fullSongList = useMemo(() => {
+    if (praiseCollection && praiseCollection.length > 0) return praiseCollection;
     return [...new Set([...INITIAL_PRAISE_LIST, ...customSongs])].sort((a, b) => a.localeCompare(b));
-  }, [customSongs]);
+  }, [customSongs, praiseCollection]);
+
+  const onRenameSongInHistory = (oldName: string, newName: string) => {
+    setHistory(prev => prev.map(record => ({
+      ...record,
+      songs: record.songs.map(s => s === oldName ? newName : s)
+    })));
+  };
 
   const songStats = useMemo(() => {
     const stats: Record<string, SongStats> = {};
@@ -248,6 +266,7 @@ const App: React.FC = () => {
     { id: 'unplayed', icon: 'assignment_late', label: 'Hinos Restantes' },
     { id: 'learning', icon: 'school', label: 'Aprendizado' },
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
+    { id: 'collections', icon: 'library_books', label: 'Coletâneas' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Sugestão Escala' },
     { id: 'manage-workers', icon: 'person_add', label: 'Gerenciar Obreiros' },
@@ -446,9 +465,10 @@ const App: React.FC = () => {
           {activeTab === 'workers' && <WorkerRanking history={history} workers={customWorkers} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
           {activeTab === 'manage-workers' && <WorkerManager workers={customWorkers} setWorkers={setCustomWorkers} />}
+          {activeTab === 'collections' && <CollectionsManager praiseCollection={praiseCollection} setPraiseCollection={setPraiseCollection} onRenameSongInHistory={onRenameSongInHistory} />}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} />}
-          {activeTab === 'unplayed' && <UnplayedList fullSongList={INITIAL_PRAISE_LIST} history={history} />}
-          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} onRestore={(h, c, l) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
+          {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
+          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>
       </main>
     </div>

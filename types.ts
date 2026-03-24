@@ -54,4 +54,5 @@ export interface AppData {
   customWorkers?: string[];
   draft?: ServiceDraft;
   learningList?: PraiseLearningItem[];
+  praiseCollection?: string[];
 }

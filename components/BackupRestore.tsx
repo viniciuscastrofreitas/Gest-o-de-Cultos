@@ -7,11 +7,12 @@ interface Props {
   history: ServiceRecord[];
   customSongs: string[];
   learningList: PraiseLearningItem[];
-  onRestore: (history: ServiceRecord[], customSongs: string[], learningList: PraiseLearningItem[]) => void;
+  praiseCollection: string[];
+  onRestore: (history: ServiceRecord[], customSongs: string[], learningList: PraiseLearningItem[], praiseCollection: string[]) => void;
   onForceSync: () => void;
 }
 
-const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, onRestore, onForceSync }) => {
+const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, praiseCollection, onRestore, onForceSync }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<any>(null);
   const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
@@ -62,7 +63,7 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, on
   }, []);
 
   const handleBackup = () => {
-    const dataStr = JSON.stringify({ history, customSongs, learningList }, null, 2);
+    const dataStr = JSON.stringify({ history, customSongs, learningList, praiseCollection }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -80,7 +81,7 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, on
         const json = JSON.parse(event.target?.result as string);
         if (json && Array.isArray(json.history)) {
           if (window.confirm("Restaurar backup? Isso substituirá seus dados atuais.")) {
-            onRestore(json.history, json.customSongs || [], json.learningList || []);
+            onRestore(json.history, json.customSongs || [], json.learningList || [], json.praiseCollection || []);
           }
         }
       } catch (err) { alert("Arquivo inválido."); }
