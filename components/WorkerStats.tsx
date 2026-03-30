@@ -5,6 +5,7 @@ import { ServiceRecord } from '../types';
 interface Props { history: ServiceRecord[]; workers: string[]; }
 
 const CULTOS = [
+  { id: 'GERAL', label: 'GERAL', fullName: 'GERAL', roles: ['gate', 'praise', 'word'] },
   { id: 'SEG', label: 'SEGUNDA', fullName: 'SEGUNDA-FEIRA', roles: ['gate', 'praise'] },
   { id: 'TER', label: 'TERÇA', fullName: 'TERÇA-FEIRA', roles: ['gate', 'praise', 'word'] },
   { id: 'QUA', label: 'QUARTA', fullName: 'QUARTA-FEIRA', roles: ['gate'] },
@@ -20,11 +21,11 @@ const WorkerStats: React.FC<Props> = ({ history, workers }) => {
 
   const officialWorkers = useMemo(() => workers.filter(name => !['VISITANTE', 'TRANSMISSÃO'].includes(name)), [workers]);
 
-  const getStats = (dayFullName: string, role: 'gate' | 'praise' | 'word') => {
+  const getStats = (dayFullName: string | null, role: 'gate' | 'praise' | 'word') => {
     const today = new Date(); today.setHours(12, 0, 0, 0);
     return officialWorkers.map(name => {
       const filtered = history.filter(r => {
-        if (r.description !== dayFullName) return false;
+        if (dayFullName && r.description !== dayFullName) return false;
         
         const value = r.roles[role];
         if (!value) return false;
@@ -68,7 +69,7 @@ const WorkerStats: React.FC<Props> = ({ history, workers }) => {
             <button onClick={() => setExpandedDay(expandedDay === culto.id ? null : culto.id)} className={`w-full px-8 py-6 flex items-center justify-between transition-colors ${expandedDay === culto.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
               <div className="flex items-center gap-5">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-[11px] shadow-sm transition-all ${expandedDay === culto.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{culto.id}</div>
-                <span className="font-black text-slate-900 text-sm tracking-widest uppercase">{culto.fullName}</span>
+                <span className="font-black text-slate-900 text-sm tracking-widest uppercase">{culto.id === 'GERAL' ? 'GERAL (TODOS OS CULTOS)' : culto.fullName}</span>
               </div>
               <span className={`material-icons text-slate-300 transition-transform ${expandedDay === culto.id ? 'rotate-180 text-indigo-500' : ''}`}>expand_more</span>
             </button>
@@ -77,7 +78,7 @@ const WorkerStats: React.FC<Props> = ({ history, workers }) => {
               <div className="p-8 space-y-6 animate-fadeIn">
                 {culto.roles.map(role => {
                   const isRoleExpanded = expandedRoles[`${culto.id}-${role}`];
-                  const stats = getStats(culto.fullName, role as any);
+                  const stats = getStats(culto.id === 'GERAL' ? null : culto.fullName, role as any);
                   return (
                     <div key={role} className="border border-slate-100 rounded-3xl overflow-hidden bg-slate-50">
                       <button onClick={() => toggleRole(culto.id, role)} className="w-full px-6 py-5 flex items-center justify-between hover:bg-slate-100 transition-colors">
