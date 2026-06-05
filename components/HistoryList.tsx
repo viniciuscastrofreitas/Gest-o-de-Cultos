@@ -10,6 +10,7 @@ interface Props {
   onClearAll: () => void;
   externalFilter?: { worker: string; role: string } | null;
   onClearExternalFilter?: () => void;
+  onRegisterGap?: (date: string, type: 'missing_service' | 'missing_ebd' | 'missing_dom') => void;
 }
 
 const HistoryList: React.FC<Props> = ({ 
@@ -19,7 +20,8 @@ const HistoryList: React.FC<Props> = ({
   onDelete, 
   onEdit, 
   externalFilter, 
-  onClearExternalFilter 
+  onClearExternalFilter,
+  onRegisterGap
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'normal' | 'gaps'>('normal');
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,6 +31,36 @@ const HistoryList: React.FC<Props> = ({
   const [filterWorker, setFilterWorker] = useState('');
   const [filterSong, setFilterSong] = useState('');
   const [filterType, setFilterType] = useState('');
+
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [ignoredGaps, setIgnoredGaps] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('ignored_gaps_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const handleIgnoreGap = (date: string, type: string) => {
+    const key = `${date}_${type}`;
+    const updated = [...ignoredGaps, key];
+    setIgnoredGaps(updated);
+    try {
+      localStorage.setItem('ignored_gaps_v1', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearIgnoredGaps = () => {
+    setIgnoredGaps([]);
+    try {
+      localStorage.removeItem('ignored_gaps_v1');
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [showShareOptions, setShowShareOptions] = useState(false);
@@ -137,20 +169,12 @@ const HistoryList: React.FC<Props> = ({
     const today = new Date();
     today.setHours(12, 0, 0, 0);
 
-    let maxDays = 45;
-    if (history.length > 0) {
-      // Find the oldest record in the history to set the scan range
-      const oldestDateStr = history.reduce((oldest, current) => {
-        return current.date < oldest ? current.date : oldest;
-      }, history[0].date);
-      
-      const oldestDate = new Date(oldestDateStr + 'T12:00:00');
-      const timeDiff = today.getTime() - oldestDate.getTime();
-      const calculatedDays = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-      maxDays = Math.max(45, calculatedDays + 1);
-    }
+    // Limit scanning exclusively to the current calendar year to ignore previous years completely
+    const startOfYear = new Date(today.getFullYear(), 0, 1, 12, 0, 0, 0);
+    const timeDiff = today.getTime() - startOfYear.getTime();
+    const maxDays = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)));
 
-    // Scan calendar days of the entire history range (minimum of 45 days)
+    // Scan calendar days of the entire history range of this year
     for (let i = maxDays; i > 0; i--) {
       const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
       const dayOfWeek = d.getDay(); // 0 Sunday, 5 Friday
@@ -189,6 +213,9 @@ const HistoryList: React.FC<Props> = ({
       }
     }
 
+    // Filter out ignored gap items
+    const filteredGaps = calendarGaps.filter(gap => !ignoredGaps.includes(`${gap.date}_${gap.type}`));
+
     // Scan registered records for completeness of required indicators
     history.forEach(r => {
       const issues: string[] = [];
@@ -226,8 +253,14 @@ const HistoryList: React.FC<Props> = ({
       }
     });
 
-    return { calendarGaps, recordCompleteness, maxDays };
-  }, [history]);
+    return { 
+      calendarGaps: filteredGaps, 
+      allGapsCount: calendarGaps.length,
+      ignoredCount: ignoredGaps.length,
+      recordCompleteness, 
+      maxDays 
+    };
+  }, [history, ignoredGaps]);
 
   const generateSingleReport = (r: ServiceRecord) => {
     const d = new Date(r.date + 'T12:00:00');
@@ -337,86 +370,33 @@ const HistoryList: React.FC<Props> = ({
         <>
           {/* PAINEL DE FILTROS AVANÇADOS */}
           <div className="bg-white rounded-[2rem] shadow-xl border border-slate-100 p-6 md:p-8 space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <span className="material-icons text-sm text-indigo-500">tune</span>
                 <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Painel de Pesquisa e Filtros</span>
               </div>
-              {(filterDate || filterWorker || filterSong || filterType || searchTerm) && (
+              <div className="flex items-center gap-4">
                 <button 
-                  onClick={clearAllFilters}
-                  className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:text-rose-600 transition-all"
+                  onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+                  className="text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl uppercase tracking-widest flex items-center gap-1.5 transition-all"
                 >
-                  Limpar Filtros
+                  <span className="material-icons text-xs">
+                    {isFiltersExpanded ? 'expand_less' : 'expand_more'}
+                  </span>
+                  {isFiltersExpanded ? 'Recolher Filtros' : 'Filtros Avançados'}
                 </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b border-slate-50">
-              {/* Filtro por Data */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Buscar por Data específica</label>
-                <input 
-                  type="date" 
-                  value={filterDate} 
-                  onChange={e => setFilterDate(e.target.value)} 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all font-mono"
-                />
-              </div>
-
-              {/* Filtro por Obreiro */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider font-mono">Buscar por Obreiro</label>
-                <input 
-                  type="text" 
-                  value={filterWorker} 
-                  onChange={e => setFilterWorker(e.target.value)} 
-                  placeholder="Nome do obreiro..." 
-                  list="history-workers-list"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
-                />
-                <datalist id="history-workers-list">
-                  {workers.map(w => <option key={w} value={w} />)}
-                </datalist>
-              </div>
-
-              {/* Filtro por Louvor */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider font-mono">Buscar por Louvor</label>
-                <input 
-                  type="text" 
-                  value={filterSong} 
-                  onChange={e => setFilterSong(e.target.value)} 
-                  placeholder="Nome ou nº do hino..." 
-                  list="history-songs-list"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
-                />
-                <datalist id="history-songs-list">
-                  {fullSongList.map(s => <option key={s} value={s} />)}
-                </datalist>
-              </div>
-
-              {/* Filtro por Tipo de Culto */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Tipo/Dia do Culto</label>
-                <select 
-                  value={filterType} 
-                  onChange={e => setFilterType(e.target.value)} 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
-                >
-                  <option value="">TODOS</option>
-                  <option value="EBD">EBD</option>
-                  <option value="DOM">DOMINGO</option>
-                  <option value="SEGUNDA-FEIRA">SEGUNDA-FEIRA</option>
-                  <option value="TERÇA-FEIRA">TERÇA-FEIRA</option>
-                  <option value="QUARTA-FEIRA">QUARTA-FEIRA</option>
-                  <option value="QUINTA-FEIRA">QUINTA-FEIRA</option>
-                  <option value="SÁBADO">SÁBADO</option>
-                </select>
+                {(filterDate || filterWorker || filterSong || filterType || searchTerm) && (
+                  <button 
+                    onClick={clearAllFilters}
+                    className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:text-rose-600 transition-all"
+                  >
+                    Limpar Filtros
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Caixa geral de texto */}
+            {/* Caixa geral de texto (Sempre visível) */}
             <div className="relative">
               <span className="material-icons absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm">search</span>
               <input 
@@ -427,6 +407,72 @@ const HistoryList: React.FC<Props> = ({
                 className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-xl text-slate-900 outline-none focus:border-indigo-500 font-bold placeholder:text-slate-300 text-xs" 
               />
             </div>
+
+            {isFiltersExpanded && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-50 animate-scaleUp">
+                {/* Filtro por Data */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Buscar por Data específica</label>
+                  <input 
+                    type="date" 
+                    value={filterDate} 
+                    onChange={e => setFilterDate(e.target.value)} 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all font-mono"
+                  />
+                </div>
+
+                {/* Filtro por Obreiro */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider font-mono">Buscar por Obreiro</label>
+                  <input 
+                    type="text" 
+                    value={filterWorker} 
+                    onChange={e => setFilterWorker(e.target.value)} 
+                    placeholder="Nome do obreiro..." 
+                    list="history-workers-list"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                  />
+                  <datalist id="history-workers-list">
+                    {workers.map(w => <option key={w} value={w} />)}
+                  </datalist>
+                </div>
+
+                {/* Filtro por Louvor */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider font-mono">Buscar por Louvor</label>
+                  <input 
+                    type="text" 
+                    value={filterSong} 
+                    onChange={e => setFilterSong(e.target.value)} 
+                    placeholder="Nome ou nº do hino..." 
+                    list="history-songs-list"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                  />
+                  <datalist id="history-songs-list">
+                    {fullSongList.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                </div>
+
+                {/* Filtro por Tipo de Culto */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Tipo/Dia do Culto</label>
+                  <select 
+                    value={filterType} 
+                    onChange={e => setFilterType(e.target.value)} 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                  >
+                    <option value="">TODOS</option>
+                    <option value="EBD">EBD</option>
+                    <option value="DOM">DOMINGO</option>
+                    <option value="SEGUNDA-FEIRA">SEGUNDA-FEIRA</option>
+                    <option value="TERÇA-FEIRA">TERÇA-FEIRA</option>
+                    <option value="QUARTA-FEIRA">QUARTA-FEIRA</option>
+                    <option value="QUINTA-FEIRA">QUINTA-FEIRA</option>
+                    <option value="SÁBADO">SÁBADO</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2.5">
@@ -575,14 +621,26 @@ const HistoryList: React.FC<Props> = ({
           {/* LACUNAS DE DATAS (CALENDÁRIO) */}
           <div className="bg-white rounded-[2.5rem] shadow-xl p-8 md:p-10 border border-slate-100">
             <div className="space-y-6">
-              <div className="text-left">
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2.5">
-                  <span className="material-icons text-amber-500">calendar_today</span>
-                  Dias sem Culto Registrado (Todo o Histórico: {alertsAndGaps.maxDays} dias)
-                </h3>
-                <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
-                  Datas esperadas no calendário padrão de cultos que estão totalmente vazias
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="text-left">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2.5">
+                    <span className="material-icons text-amber-500">calendar_today</span>
+                    Dias sem Culto Registrado (Histórico: {alertsAndGaps.maxDays} dias)
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                    Datas esperadas no calendário padrão de cultos que estão totalmente vazias
+                  </p>
+                </div>
+                {alertsAndGaps.ignoredCount > 0 && (
+                  <button
+                    onClick={handleClearIgnoredGaps}
+                    className="self-start sm:self-center flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/60 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all shadow-xs"
+                    title="Reexibir datas ignoradas"
+                  >
+                    <span className="material-icons text-xs">restore</span>
+                    Reexibir {alertsAndGaps.ignoredCount} Cultos Ocultos
+                  </button>
+                )}
               </div>
 
               {alertsAndGaps.calendarGaps.length === 0 ? (
@@ -592,24 +650,47 @@ const HistoryList: React.FC<Props> = ({
               ) : (
                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                   {alertsAndGaps.calendarGaps.map((gap, idx) => (
-                    <div key={idx} className="bg-amber-50/40 border border-amber-100 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-scaleUp">
-                      <div className="flex items-center gap-4">
-                        <div className="w-11 h-11 bg-amber-500/10 text-amber-600 rounded-xl flex items-center justify-center font-black text-xs font-mono">
-                          {gap.formattedDate.substring(0, 5)}
+                    <div key={idx} className="bg-[#fffbeb] border border-amber-100/70 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all animate-scaleUp">
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-12 h-12 bg-amber-500/10 text-amber-600 rounded-xl flex flex-col items-center justify-center font-black text-xs font-mono shrink-0 border border-amber-500/20">
+                          <span className="text-[14px] leading-tight font-black">{gap.date.split('-')[2]}</span>
+                          <span className="text-[7.5px] leading-none uppercase font-black opacity-85">
+                            {monthNames[new Date(gap.date + 'T12:00:00').getMonth()].substring(0, 3)}
+                          </span>
                         </div>
-                        <div>
-                          <p className="text-xs font-black text-slate-800 uppercase tracking-tight">
-                            {gap.dayName}
-                          </p>
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
-                            Faltando registro oficial para esta data
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-xs font-black text-slate-800 uppercase tracking-tight">
+                              {gap.dayName}
+                            </p>
+                            <span className="text-[8px] font-black tracking-wider uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
+                              Sem Registro
+                            </span>
+                          </div>
+                          <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                            Não há nenhum relatório cadastrado para este dia litúrgico ({gap.formattedDate})
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[8px] font-black bg-amber-500 text-white px-2 py-1 rounded-lg uppercase tracking-wider shadow-sm">
-                          SEM REGISTRO
-                        </span>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0 w-full sm:w-auto mt-1 sm:mt-0">
+                        {onRegisterGap && (
+                          <button
+                            onClick={() => onRegisterGap(gap.date, gap.type)}
+                            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider shadow-sm transition-all hover:scale-[1.02] active:scale-95"
+                          >
+                            <span className="material-icons text-xs text-white">add</span>
+                            Registrar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleIgnoreGap(gap.date, gap.type)}
+                          className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all active:scale-95"
+                        >
+                          <span className="material-icons text-xs text-slate-500">visibility_off</span>
+                          Ignorar dia
+                        </button>
                       </div>
                     </div>
                   ))}

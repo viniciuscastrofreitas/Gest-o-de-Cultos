@@ -260,6 +260,22 @@ const App: React.FC = () => {
     setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles }, attendance: {} });
   };
 
+  const handleRegisterGap = (date: string, type: 'missing_service' | 'missing_ebd' | 'missing_dom') => {
+    setEditingId(null);
+    let initialDescription = '';
+    if (type === 'missing_ebd') initialDescription = 'EBD';
+    else if (type === 'missing_dom') initialDescription = 'DOM';
+    
+    setDraft({
+      date,
+      description: initialDescription,
+      songs: [],
+      roles: { ...emptyRoles },
+      attendance: {}
+    });
+    setActiveTab('new');
+  };
+
   const menuItems = [
     { id: 'new', icon: 'add_circle', label: 'Novo Culto' },
     { id: 'history', icon: 'history', label: 'Histórico' },
@@ -460,7 +476,7 @@ const App: React.FC = () => {
         {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-0 z-[190] shadow-lg">Você está operando offline.</div>}
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => setCustomSongs(prev => [...prev, s])} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
-          {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} />}
+          {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}
           {activeTab === 'learning' && <PraiseLearningList fullSongList={fullSongList} learningList={learningList} setLearningList={setLearningList} />}
           {activeTab === 'workers' && <WorkerRanking history={history} workers={customWorkers} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
