@@ -482,7 +482,7 @@ const App: React.FC = () => {
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
           {activeTab === 'manage-workers' && <WorkerManager workers={customWorkers} setWorkers={setCustomWorkers} />}
           {activeTab === 'collections' && <CollectionsManager praiseCollection={praiseCollection} setPraiseCollection={setPraiseCollection} onRenameSongInHistory={onRenameSongInHistory} />}
-          {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} />}
+          {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} history={history} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
           {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>
