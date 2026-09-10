@@ -13,20 +13,32 @@ import PraiseLearningList from './components/PraiseLearningList';
 import WorkerManager from './components/WorkerManager';
 import CollectionsManager from './components/CollectionsManager';
 import AuthForm from './components/AuthForm';
-import { initDB, saveData, loadData } from './db';
+import { initDB, saveData, loadData, getImmediateCachedData } from './db';
 import { supabase } from './supabase';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineBanner } from './components/OfflineBanner';
 
 const App: React.FC = () => {
+  // 1. CARREGAMENTO INSTANTÂNEO DIRETO DO DISCO DO CELULAR (0ms de espera)
+  const cachedInitial = useMemo(() => getImmediateCachedData(), []);
+
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
-  const [history, setHistory] = useState<ServiceRecord[]>([]);
-  const [churchName, setChurchName] = useState('Clique aqui para nomear sua igreja');
+  const [history, setHistory] = useState<ServiceRecord[]>(() => cachedInitial?.history || []);
+  const [churchName, setChurchName] = useState<string>(() => cachedInitial?.churchName || 'Clique aqui para nomear sua igreja');
   const [isEditingChurchName, setIsEditingChurchName] = useState(false);
-  const [customSongs, setCustomSongs] = useState<string[]>([]);
-  const [praiseCollection, setPraiseCollection] = useState<string[]>([]);
-  const [customWorkers, setCustomWorkers] = useState<string[]>(DEFAULT_WORKERS_LIST);
-  const [learningList, setLearningList] = useState<PraiseLearningItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingStatus, setLoadingStatus] = useState('Iniciando sistema...');
+  const [customSongs, setCustomSongs] = useState<string[]>(() => cachedInitial?.customSongs || []);
+  const [praiseCollection, setPraiseCollection] = useState<string[]>(() => {
+    if (cachedInitial?.praiseCollection && cachedInitial.praiseCollection.length > 0) {
+      return cachedInitial.praiseCollection;
+    }
+    return [...new Set([...INITIAL_PRAISE_LIST, ...(cachedInitial?.customSongs || [])])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  });
+  const [customWorkers, setCustomWorkers] = useState<string[]>(() => cachedInitial?.customWorkers || DEFAULT_WORKERS_LIST);
+  const [learningList, setLearningList] = useState<PraiseLearningItem[]>(() => cachedInitial?.learningList || []);
+  
+  // Se já temos registros salvos na memória do celular, o app abre IMEDIATAMENTE!
+  const [isLoading, setIsLoading] = useState(() => !cachedInitial || !cachedInitial.history);
+  const [loadingStatus, setLoadingStatus] = useState('Abrindo aplicativo...');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -56,22 +68,35 @@ const App: React.FC = () => {
 
   const emptyRoles = { gate: '', praise: '', word: '', scripture: '' };
 
-  const [draft, setDraft] = useState<ServiceDraft>({
-    date: getTodayDate(),
-    description: '',
-    songs: [],
-    roles: { ...emptyRoles },
-    attendance: {}
+  const [draft, setDraft] = useState<ServiceDraft>(() => {
+    if (cachedInitial?.draft) {
+      return { ...cachedInitial.draft, date: getTodayDate() };
+    }
+    return {
+      date: getTodayDate(),
+      description: '',
+      songs: [],
+      roles: { ...emptyRoles },
+      attendance: {}
+    };
   });
 
   const pullFromCloud = async (userId: string) => {
     try {
       setSyncStatus('syncing');
-      const { data, error } = await supabase
+      
+      // TIMEOUT DE PROTEÇÃO: Em locais como a igreja com sinal instável, não trava o app!
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout de rede")), 2500)
+      );
+
+      const queryPromise = supabase
         .from('user_data')
         .select('json_data, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
+
+      const { data, error }: any = await Promise.race([queryPromise, timeoutPromise]);
 
       if (error) throw error;
       
@@ -86,12 +111,15 @@ const App: React.FC = () => {
           if (remote.customWorkers) setCustomWorkers(remote.customWorkers);
           if (remote.learningList) setLearningList(remote.learningList);
           if (remote.praiseCollection) setPraiseCollection(remote.praiseCollection);
+
+          // Salva imediatamente no armazenamento local do aparelho
+          saveData(remote);
         }
       }
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro ao puxar dados da nuvem:", e);
-      setSyncStatus('error');
+      console.warn("Sem conexão com a nuvem no momento. Usando dados salvos localmente.", e);
+      setSyncStatus('local');
     }
   };
 
@@ -100,29 +128,41 @@ const App: React.FC = () => {
     setSyncStatus('syncing');
     try {
       const timestamp = new Date().toISOString();
-      const { error } = await supabase.from('user_data').upsert({ 
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout de rede")), 3500)
+      );
+
+      const upsertPromise = supabase.from('user_data').upsert({ 
         user_id: user.id, 
         json_data: { history, churchName, customSongs, customWorkers, learningList, praiseCollection },
         updated_at: timestamp
       }, { onConflict: 'user_id' });
+
+      const { error }: any = await Promise.race([upsertPromise, timeoutPromise]);
       
       if (error) throw error;
       lastCloudUpdateRef.current = timestamp;
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro ao enviar dados para nuvem:", e);
+      console.warn("Erro ao enviar dados para nuvem, mantendo local:", e);
       setSyncStatus('error');
     }
   };
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+    const handleOffline = () => {
+      setIsOffline(true);
+      setSyncStatus('local');
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Recupera sessão com timeout curto para não prender em modo offline
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+    }).catch(() => {
+      // Ignora erro de rede se estiver offline
     });
 
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -139,35 +179,22 @@ const App: React.FC = () => {
 
     const setup = async () => {
       try {
-        setLoadingStatus('Conectando ao banco local...');
         await initDB();
-        
-        setLoadingStatus('Recuperando seus registros...');
         const data = await loadData();
         
         if (data) {
-          setLoadingStatus('Organizando informações...');
-          if (data.history) setHistory(data.history);
-          if (data.churchName) setChurchName(data.churchName);
+          if (data.history && data.history.length > 0) setHistory(data.history);
+          if (data.churchName && data.churchName !== 'Clique aqui para nomear sua igreja') setChurchName(data.churchName);
           if (data.customSongs) setCustomSongs(data.customSongs);
           if (data.customWorkers) setCustomWorkers(data.customWorkers);
           if (data.learningList) setLearningList(data.learningList);
-          if (data.praiseCollection) {
+          if (data.praiseCollection && data.praiseCollection.length > 0) {
             setPraiseCollection(data.praiseCollection);
-          } else {
-            // Inicialização da Coletânea
-            const initial = [...new Set([...INITIAL_PRAISE_LIST, ...(data.customSongs || [])])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-            setPraiseCollection(initial);
           }
           if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
         }
-        
-        setLoadingStatus('Quase pronto...');
-        await new Promise(r => setTimeout(r, 800));
-        
       } catch (e) {
-        console.error("Erro no DB Local", e);
-        setLoadingStatus('Erro ao carregar dados locais.');
+        console.warn("Aviso ao carregar DB local:", e);
       } finally {
         setIsLoading(false);
       }
@@ -220,7 +247,7 @@ const App: React.FC = () => {
     } else if (!user) {
       setSyncStatus('local');
     }
-  }, [history, churchName, customSongs, customWorkers, draft, learningList, user, isOffline, isLoading, hasCheckedCloud]);
+  }, [history, churchName, customSongs, customWorkers, draft, learningList, praiseCollection, user, isOffline, isLoading, hasCheckedCloud]);
 
   const fullSongList = useMemo(() => {
     if (praiseCollection && praiseCollection.length > 0) return praiseCollection;
@@ -296,14 +323,15 @@ const App: React.FC = () => {
   };
 
   const AppBrand = () => {
-    const statusIcon = { synced: 'cloud_done', syncing: 'sync', local: 'cloud_off', error: 'cloud_off' }[syncStatus];
-    const statusColor = { synced: 'text-emerald-400', syncing: 'text-amber-400 animate-spin', local: 'text-slate-500', error: 'text-rose-500' }[syncStatus];
-    const statusText = { synced: 'Sincronizado', syncing: 'Sincronizando...', local: 'Modo Local', error: 'Erro Conexão' }[syncStatus];
+    const isLocalSafe = syncStatus === 'local' || isOffline;
+    const statusIcon = syncStatus === 'synced' ? 'cloud_done' : syncStatus === 'syncing' ? 'sync' : isLocalSafe ? 'verified' : 'cloud_off';
+    const statusColor = syncStatus === 'synced' ? 'text-emerald-400' : syncStatus === 'syncing' ? 'text-amber-400 animate-spin' : isLocalSafe ? 'text-emerald-400' : 'text-rose-500';
+    const statusText = syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'syncing' ? 'Sincronizando...' : isLocalSafe ? '100% Salvo no Aparelho' : 'Erro Conexão';
 
     return (
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 bg-white rounded-xl shadow-xl flex items-center justify-center p-2 shrink-0">
-          <img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" alt="Logo" className="w-full h-full object-contain" />
+          <img src="/icon.svg" alt="Logo ICM" className="w-full h-full object-contain" />
         </div>
         <div className="flex flex-col min-w-0 flex-1">
           {isEditingChurchName ? (
@@ -367,7 +395,7 @@ const App: React.FC = () => {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="relative mb-12 flex flex-col items-center">
         <div className="w-24 h-24 bg-white rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex items-center justify-center p-4 relative z-10 animate-pulse">
-          <img src="https://cdn-icons-png.flaticon.com/512/1672/1672225.png" className="w-full h-full object-contain" alt="Logo" />
+          <img src="/icon.svg" className="w-full h-full object-contain" alt="Logo" />
         </div>
       </div>
       <div className="flex flex-col items-center gap-5 max-w-xs w-full relative z-10">
@@ -398,6 +426,10 @@ const App: React.FC = () => {
           <AppBrand />
         </div>
         <UserHeader />
+        <div className="px-10 py-3 border-b border-white/5 flex items-center justify-between">
+          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aplicativo PWA</span>
+          <PWAInstallButton variant="header" />
+        </div>
         <nav className="flex-1 py-6 overflow-y-auto custom-scrollbar">
           {menuItems.map(item => (
             <button 
@@ -422,9 +454,12 @@ const App: React.FC = () => {
 
       <header className="md:hidden bg-[#1e293b] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl border-b border-white/5">
         <AppBrand />
-        <button onClick={() => setIsMobileMenuOpen(true)} className="w-12 h-12 bg-white/5 rounded-2xl active:scale-90 transition-transform flex items-center justify-center">
-          <span className="material-icons text-2xl">menu</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <PWAInstallButton variant="header" />
+          <button onClick={() => setIsMobileMenuOpen(true)} className="w-12 h-12 bg-white/5 rounded-2xl active:scale-90 transition-transform flex items-center justify-center">
+            <span className="material-icons text-2xl">menu</span>
+          </button>
+        </div>
       </header>
 
       {isMobileMenuOpen && (
@@ -473,7 +508,8 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-1 min-w-0">
-        {isOffline && <div className="bg-amber-500 text-white text-[10px] font-black uppercase py-2.5 text-center sticky top-0 z-[190] shadow-lg">Você está operando offline.</div>}
+        <PWAInstallButton variant="banner" />
+        <OfflineBanner />
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => { setCustomSongs(prev => [...prev, s]); setPraiseCollection(prev => [...new Set([...prev, s])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))); }} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}

@@ -1,5 +1,8 @@
 {
   "name": "Relatório de Culto",
-  "description": "Sistema de gestão de louvores para Igreja Cristã Maranata com histórico, ranking e backup.",
-  "requestFramePermissions": []
+  "description": "Sistema de gestão de louvores e cultos para Igreja Cristã Maranata com relatórios WhatsApp, PDF, PWA offline e estatísticas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

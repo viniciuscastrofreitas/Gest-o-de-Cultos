@@ -1,24 +1,32 @@
 
 {
-  "name": "Relatório de Culto",
+  "id": "/",
+  "name": "Relatório de Culto ICM",
   "short_name": "Relatório",
-  "description": "Gestão de louvores para Igreja Cristã Maranata",
+  "description": "Gestão de cultos, louvores e frequência para Igreja Cristã Maranata",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1a1c3d",
-  "theme_color": "#1a1c3d",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1672/1672225.png",
-      "sizes": "512x512",
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1672/1672225.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

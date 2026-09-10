@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
+import { ReportModal } from './ReportModal';
 
 interface Props {
   history: ServiceRecord[];
@@ -64,6 +65,8 @@ const HistoryList: React.FC<Props> = ({
 
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [showShareOptions, setShowShareOptions] = useState(false);
+  const [selectedReportRecord, setSelectedReportRecord] = useState<ServiceRecord | null>(null);
+  const [selectedReportBatch, setSelectedReportBatch] = useState<{ title: string; records: ServiceRecord[] } | null>(null);
 
   const monthNames = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
   const dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
@@ -305,15 +308,12 @@ const HistoryList: React.FC<Props> = ({
   };
 
   const handleWhatsAppShare = (title: string, records: ServiceRecord[]) => {
-    const reportData = [...records].sort((a, b) => a.date.localeCompare(b.date));
-    const text = reportData.map(r => generateSingleReport(r)).join('\n' + '─'.repeat(15) + '\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+    setSelectedReportBatch({ title: `Relatório - ${title}`, records });
     setShowShareOptions(false);
   };
 
   const handleIndividualShare = (record: ServiceRecord) => {
-    const text = generateSingleReport(record);
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+    setSelectedReportRecord(record);
   };
 
   const InfoTag = ({ label, value, icon, roleId }: { label: string, value?: string, icon: string, roleId: string }) => {
@@ -807,6 +807,24 @@ const HistoryList: React.FC<Props> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE RELATÓRIO COMPLETO (WHATSAPP / PDF / CARTÃO) */}
+      {selectedReportRecord && (
+        <ReportModal
+          record={selectedReportRecord}
+          onClose={() => setSelectedReportRecord(null)}
+          dayOfWeekNamesShort={dayOfWeekNamesShort}
+        />
+      )}
+
+      {selectedReportBatch && (
+        <ReportModal
+          records={selectedReportBatch.records}
+          title={selectedReportBatch.title}
+          onClose={() => setSelectedReportBatch(null)}
+          dayOfWeekNamesShort={dayOfWeekNamesShort}
+        />
       )}
     </div>
   );

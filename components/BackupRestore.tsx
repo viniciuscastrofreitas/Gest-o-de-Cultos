@@ -153,6 +153,81 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, pr
         </div>
       </div>
 
+      {/* SEÇÃO ESPECIAL: MODO IGREJA 100% OFFLINE */}
+      <div className="card-main p-8 md:p-12 border-2 border-emerald-500/20 bg-gradient-to-br from-white via-white to-emerald-50/30 shadow-2xl">
+        <div className="flex flex-col space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="w-16 h-16 bg-emerald-600 text-white rounded-3xl flex items-center justify-center shadow-lg shadow-emerald-600/30">
+                <span className="material-icons text-3xl">offline_pin</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.3em] block mb-1">Tecnologia Offline-First</span>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Modo Igreja (Sem Internet)</h3>
+                <p className="text-slate-500 text-xs font-semibold">Funciona completamente sem sinal de chip e sem Wi-Fi no templo.</p>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                const data = { history, customSongs, learningList, praiseCollection };
+                try {
+                  localStorage.setItem('church_service_reports_v1_local_v2', JSON.stringify(data));
+                  alert("✓ Confirmação de Segurança:\n\nTodos os seus " + history.length + " cultos e " + praiseCollection.length + " louvores estão gravados com segurança na memória interna do seu telefone.\n\nVocê NÃO precisa deixar o aplicativo aberto antes de sair de casa. Pode abrir direto na igreja sem sinal de internet!");
+                } catch (e) {
+                  alert("Aviso: verifique o espaço de armazenamento do seu navegador.");
+                }
+              }} 
+              className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/20"
+            >
+              <span className="material-icons text-base">verified_user</span>
+              Garantir Gravação no Celular
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+              <span className="material-icons text-indigo-500 text-2xl">church</span>
+              <div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Cultos no Aparelho</span>
+                <span className="text-slate-900 font-black text-sm uppercase">{history.length} Registros Prontos</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+              <span className="material-icons text-amber-500 text-2xl">music_note</span>
+              <div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Coletânea de Louvores</span>
+                <span className="text-slate-900 font-black text-sm uppercase">{praiseCollection.length} Hinos Disponíveis</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+              <span className="material-icons text-emerald-500 text-2xl">phonelink_ring</span>
+              <div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Sem Sinal na Igreja</span>
+                <span className="text-emerald-600 font-black text-sm uppercase">100% Funcional Offline</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-slate-600 text-xs space-y-2">
+            <div className="flex items-start gap-2.5">
+              <span className="material-icons text-emerald-600 text-sm mt-0.5">check_circle</span>
+              <p><strong className="text-slate-800">Não precisa deixar o app aberto em casa:</strong> Seus cultos e hinos agora ficam permanentemente gravados no armazenamento do aparelho (LocalStorage e IndexedDB com persistência).</p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="material-icons text-emerald-600 text-sm mt-0.5">check_circle</span>
+              <p><strong className="text-slate-800">Instale como Aplicativo (PWA):</strong> Ao adicionar o ícone na tela inicial do celular, o navegador salva todo o código do aplicativo. Ele abre como um app nativo mesmo com o celular em modo avião.</p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="material-icons text-emerald-600 text-sm mt-0.5">check_circle</span>
+              <p><strong className="text-slate-800">Sincronização em segundo plano:</strong> Registre o culto na igreja normalmente. Quando você voltar para casa ou conectar ao Wi-Fi, o app sincroniza tudo com a nuvem automaticamente.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="card-main p-10 flex flex-col items-center text-center group">
           <div className="w-16 h-16 bg-indigo-50 rounded-3xl flex items-center justify-center mb-8 text-indigo-600 group-hover:scale-110 transition-transform">
