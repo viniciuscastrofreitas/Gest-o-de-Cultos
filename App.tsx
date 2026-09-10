@@ -329,9 +329,10 @@ const App: React.FC = () => {
     const statusText = syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'syncing' ? 'Sincronizando...' : isLocalSafe ? '100% Salvo no Aparelho' : 'Erro Conexão';
 
     return (
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 bg-white rounded-xl shadow-xl flex items-center justify-center p-2 shrink-0">
-          <img src="/icon.svg" alt="Logo ICM" className="w-full h-full object-contain" />
+      <div className="flex items-center gap-3.5">
+        <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 rounded-2xl shadow-lg shadow-indigo-900/40 flex items-center justify-center p-1 border border-white/10 shrink-0 relative overflow-hidden group">
+          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <span className="material-icons text-white text-2xl drop-shadow-md">assignment</span>
         </div>
         <div className="flex flex-col min-w-0 flex-1">
           {isEditingChurchName ? (
@@ -356,7 +357,7 @@ const App: React.FC = () => {
              </div>
              <div className="h-3 w-px bg-white/10 mx-1"></div>
              <div className="flex items-center gap-1">
-               <span className="material-icons text-[12px] text-amber-400">analytics</span>
+               <span className="material-icons text-[12px] text-amber-400">description</span>
                <span className="text-amber-400 font-black text-[9px] uppercase tracking-widest">{history.length} Cultos</span>
              </div>
           </div>
@@ -394,8 +395,8 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center text-white p-10 animate-fadeIn relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="relative mb-12 flex flex-col items-center">
-        <div className="w-24 h-24 bg-white rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex items-center justify-center p-4 relative z-10 animate-pulse">
-          <img src="/icon.svg" className="w-full h-full object-contain" alt="Logo" />
+        <div className="w-24 h-24 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.35)] flex items-center justify-center p-4 relative z-10 animate-pulse border border-white/10">
+          <span className="material-icons text-white text-5xl">assignment</span>
         </div>
       </div>
       <div className="flex flex-col items-center gap-5 max-w-xs w-full relative z-10">
