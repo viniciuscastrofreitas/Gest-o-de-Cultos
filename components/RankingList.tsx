@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { ServiceRecord, SongStats } from '../types';
-import { RepetitionChart } from './RepetitionChart';
 
 interface Props {
   songStats: Record<string, SongStats>;
@@ -8,7 +7,7 @@ interface Props {
   history?: ServiceRecord[];
 }
 
-const RankingList: React.FC<Props> = ({ songStats, fullSongList = [], history = [] }) => {
+const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
   const [activeCategory, setActiveCategory] = useState<'principais' | 'cias' | 'clamor'>('principais');
   const [isRankingExpanded, setIsRankingExpanded] = useState(true);
   const [isClamorHistoryExpanded, setIsClamorHistoryExpanded] = useState(true);
@@ -92,9 +91,6 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [], history = 
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* GRÁFICO E ÍNDICE GERAL DE REPETIÇÃO */}
-      <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} />
-
       {/* CARD 1 - RANKING DE MAIS CANTADOS */}
       <div className="bg-white rounded-[3rem] shadow-2xl p-8 md:p-12 border border-slate-100">
         <button 

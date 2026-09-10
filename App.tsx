@@ -5,6 +5,7 @@ import { ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './ty
 import ServiceForm from './components/ServiceForm';
 import HistoryList from './components/HistoryList';
 import RankingList from './components/RankingList';
+import { RepetitionChart } from './components/RepetitionChart';
 import BackupRestore from './components/BackupRestore';
 import UnplayedList from './components/UnplayedList';
 import WorkerStats from './components/WorkerStats';
@@ -22,7 +23,7 @@ const App: React.FC = () => {
   // 1. CARREGAMENTO INSTANTÂNEO DIRETO DO DISCO DO CELULAR (0ms de espera)
   const cachedInitial = useMemo(() => getImmediateCachedData(), []);
 
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'repetition' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>(() => cachedInitial?.history || []);
   const [churchName, setChurchName] = useState<string>(() => cachedInitial?.churchName || 'Clique aqui para nomear sua igreja');
   const [isEditingChurchName, setIsEditingChurchName] = useState(false);
@@ -309,6 +310,7 @@ const App: React.FC = () => {
     { id: 'unplayed', icon: 'assignment_late', label: 'Hinos Restantes' },
     { id: 'learning', icon: 'school', label: 'Aprendizado' },
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
+    { id: 'repetition', icon: 'insights', label: 'Taxa de Repetição' },
     { id: 'collections', icon: 'library_books', label: 'Coletâneas' },
     { id: 'workers', icon: 'emoji_events', label: 'Ranking Obreiros' },
     { id: 'suggestions', icon: 'assignment_ind', label: 'Sugestão Escala' },
@@ -519,7 +521,8 @@ const App: React.FC = () => {
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
           {activeTab === 'manage-workers' && <WorkerManager workers={customWorkers} setWorkers={setCustomWorkers} />}
           {activeTab === 'collections' && <CollectionsManager praiseCollection={praiseCollection} setPraiseCollection={setPraiseCollection} onRenameSongInHistory={onRenameSongInHistory} />}
-          {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} history={history} />}
+          {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} />}
+          {activeTab === 'repetition' && <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
           {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>
