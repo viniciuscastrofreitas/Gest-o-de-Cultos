@@ -10,6 +10,7 @@ interface Props {
 interface GroupDefinition { name: string; min: number; max: number; }
 
 const CATEGORIES: GroupDefinition[] = [
+  { name: "CONTRA CAPA", min: 0, max: 0 },
   { name: "CLAMOR", min: 1, max: 56 },
   { name: "INVOCAÇÃO E COMUNHÃO", min: 57, max: 96 },
   { name: "DEDICAÇÃO", min: 97, max: 200 },

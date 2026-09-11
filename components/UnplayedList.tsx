@@ -10,6 +10,7 @@ interface Props {
 interface GroupDefinition { name: string; min: number; max: number; }
 
 const CATEGORIES: GroupDefinition[] = [
+  { name: "CONTRA CAPA", min: 0, max: 0 },
   { name: "CLAMOR", min: 1, max: 56 },
   { name: "INVOCAÇÃO E COMUNHÃO", min: 57, max: 96 },
   { name: "DEDICAÇÃO", min: 97, max: 200 },
@@ -60,10 +61,23 @@ const UnplayedList: React.FC<Props> = ({ fullSongList, history }) => {
     fullSongList.forEach(song => {
       const isUnplayed = !playedSongsSet.has(song.trim());
       const isCias = song.startsWith('(CIAS)');
-      if (isCias) { totCias++; if (isUnplayed) unCias++; } else { totMain++; if (isUnplayed) unMain++; }
+      const num = extractNumber(song);
+
+      if (isCias) {
+        // Hinos oficiais CIAS (01 a 241)
+        if (num !== null && num >= 1 && num <= 241) {
+          totCias++;
+          if (isUnplayed) unCias++;
+        }
+      } else {
+        // Hinos oficiais Principais (00 a 794) - não conta avulsos na porcentagem da coletânea
+        if (num !== null && num >= 0 && num <= 794) {
+          totMain++;
+          if (isUnplayed) unMain++;
+        }
+      }
       
       if (isUnplayed && song.toLowerCase().includes(searchTerm.toLowerCase())) {
-        const num = extractNumber(song);
         if (isCias) {
           if (num !== null) {
             for (const cat of CIAS_CATEGORIES) if (num >= cat.min && num <= cat.max) { ciasGroups[cat.name].push(song); break; }

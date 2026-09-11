@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ServiceRecord, SongStats } from '../types';
+import { isClamorSong, isCiasSong, isAvulsoSong, isPrincipalSong } from '../utils/praiseCategories';
 
 interface Props {
   songStats: Record<string, SongStats>;
@@ -8,45 +9,43 @@ interface Props {
 }
 
 const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
-  const [activeCategory, setActiveCategory] = useState<'principais' | 'cias' | 'clamor'>('principais');
+  const [activeCategory, setActiveCategory] = useState<'principais' | 'cias' | 'clamor' | 'avulsos'>('principais');
   const [isRankingExpanded, setIsRankingExpanded] = useState(true);
   const [isClamorHistoryExpanded, setIsClamorHistoryExpanded] = useState(true);
 
-  const extractNumber = (song: string): number | null => {
-    const match = song.match(/(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-  };
-
-  const isClamorSong = (song: string): boolean => {
-    const isCias = song.startsWith('(CIAS)');
-    const num = extractNumber(song);
-    if (num === null) return false;
-    return isCias ? (num >= 1 && num <= 13) : (num >= 1 && num <= 56);
-  };
-
-  const { topPrincipais, topCias, topClamor } = useMemo(() => {
+  const { topPrincipais, topCias, topClamor, topAvulsos } = useMemo(() => {
     const allStats = Object.values(songStats) as SongStats[];
     
+    // Principais: hinos oficiais da coletânea geral (00 e 57 a 794), sem avulsos e sem clamor
     const principais = allStats
-      .filter(stat => !stat.song.startsWith('(CIAS)') && !isClamorSong(stat.song) && stat.count > 1)
+      .filter(stat => isPrincipalSong(stat.song) && stat.count > 1)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // CIAS: todos os hinos das CIAS, inclusive o clamor das CIAS
     const cias = allStats
-      .filter(stat => stat.song.startsWith('(CIAS)') && !isClamorSong(stat.song) && stat.count > 1)
+      .filter(stat => isCiasSong(stat.song) && !isAvulsoSong(stat.song) && stat.count > 1)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // Clamor: estritamente da Coletânea Geral (01 a 56)
     const clamor = allStats
       .filter(stat => isClamorSong(stat.song) && stat.count > 1)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    return { topPrincipais: principais, topCias: cias, topClamor: clamor };
+    // Avulsos: louvores avulsos que não pertencem nem à coletânea geral nem a CIAS
+    const avulsos = allStats
+      .filter(stat => isAvulsoSong(stat.song) && stat.count > 1)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return { topPrincipais: principais, topCias: cias, topClamor: clamor, topAvulsos: avulsos };
   }, [songStats]);
 
   const clamorHistory = useMemo(() => {
     const list = (fullSongList || []).filter(isClamorSong);
+
     const today = new Date();
     today.setHours(12, 0, 0, 0);
 
@@ -78,8 +77,9 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
   const currentList = useMemo(() => {
     if (activeCategory === 'principais') return topPrincipais;
     if (activeCategory === 'cias') return topCias;
+    if (activeCategory === 'avulsos') return topAvulsos;
     return topClamor;
-  }, [activeCategory, topPrincipais, topCias, topClamor]);
+  }, [activeCategory, topPrincipais, topCias, topClamor, topAvulsos]);
 
   const formatDateStr = (dateStr: string | null) => {
     if (!dateStr) return 'NUNCA';
@@ -111,24 +111,30 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
 
         {isRankingExpanded && (
           <div className="mt-10 animate-scaleUp">
-            <div className="flex bg-slate-100 p-1 rounded-2xl self-start md:self-center mb-8 gap-1">
+            <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl self-start md:self-center mb-8 gap-1">
               <button 
                 onClick={() => setActiveCategory('principais')}
-                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'principais' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'principais' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 Principais
               </button>
               <button 
                 onClick={() => setActiveCategory('cias')}
-                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'cias' ? 'bg-white text-rose-500 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'cias' ? 'bg-white text-rose-500 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 CIAS
               </button>
               <button 
                 onClick={() => setActiveCategory('clamor')}
-                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'clamor' ? 'bg-white text-amber-500 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'clamor' ? 'bg-white text-amber-500 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 Clamor
+              </button>
+              <button 
+                onClick={() => setActiveCategory('avulsos')}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === 'avulsos' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Avulsos
               </button>
             </div>
 
@@ -143,7 +149,7 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-5 overflow-hidden">
                         <div className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-2xl font-black text-sm transition-all group-hover:scale-110 ${
-                          index === 0 ? (activeCategory === 'cias' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : activeCategory === 'clamor' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20') :
+                          index === 0 ? (activeCategory === 'cias' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : activeCategory === 'clamor' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : activeCategory === 'avulsos' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20') :
                           index === 1 ? 'bg-slate-200 text-slate-600' :
                           index === 2 ? 'bg-orange-600 text-white' :
                           'bg-slate-100 text-slate-400'
@@ -155,7 +161,7 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className={`font-black text-xl block leading-none ${activeCategory === 'cias' ? 'text-rose-500' : activeCategory === 'clamor' ? 'text-amber-500' : 'text-indigo-600'}`}>{stat.count}</span>
+                        <span className={`font-black text-xl block leading-none ${activeCategory === 'cias' ? 'text-rose-500' : activeCategory === 'clamor' ? 'text-amber-500' : activeCategory === 'avulsos' ? 'text-emerald-600' : 'text-indigo-600'}`}>{stat.count}</span>
                         <span className="text-[8px] text-slate-400 font-black uppercase tracking-widest">Atos</span>
                       </div>
                     </div>
@@ -163,9 +169,9 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
                     <div className="relative w-full h-3 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
                       <div 
                         className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                          index === 0 ? (activeCategory === 'cias' ? 'bg-rose-500' : activeCategory === 'clamor' ? 'bg-amber-500' : 'bg-indigo-500') : 
-                          index < 3 ? (activeCategory === 'cias' ? 'bg-rose-400' : activeCategory === 'clamor' ? 'bg-amber-400' : 'bg-indigo-500') : 
-                          (activeCategory === 'cias' ? 'bg-rose-200' : activeCategory === 'clamor' ? 'bg-amber-100' : 'bg-indigo-200')
+                          index === 0 ? (activeCategory === 'cias' ? 'bg-rose-500' : activeCategory === 'clamor' ? 'bg-amber-500' : activeCategory === 'avulsos' ? 'bg-emerald-500' : 'bg-indigo-500') : 
+                          index < 3 ? (activeCategory === 'cias' ? 'bg-rose-400' : activeCategory === 'clamor' ? 'bg-amber-400' : activeCategory === 'avulsos' ? 'bg-emerald-400' : 'bg-indigo-500') : 
+                          (activeCategory === 'cias' ? 'bg-rose-200' : activeCategory === 'clamor' ? 'bg-amber-100' : activeCategory === 'avulsos' ? 'bg-emerald-200' : 'bg-indigo-200')
                         }`}
                         style={{ width: `${(stat.count / maxCount) * 100}%` }}
                       />
@@ -190,7 +196,7 @@ const RankingList: React.FC<Props> = ({ songStats, fullSongList = [] }) => {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900 tracking-tighter uppercase">Recorrência do Clamor</h2>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Do que cantou há mais tempo para o mais recente</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Coletânea Geral (01 a 56) • Do que cantou há mais tempo para o mais recente</p>
             </div>
           </div>
           <span className={`material-icons text-slate-300 transition-transform duration-300 ${isClamorHistoryExpanded ? 'rotate-180 text-indigo-500' : ''}`}>expand_more</span>

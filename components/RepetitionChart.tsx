@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ServiceRecord, SongStats } from '../types';
+import { matchesCategory } from '../utils/praiseCategories';
 
 interface Props {
   history: ServiceRecord[];
@@ -7,7 +8,7 @@ interface Props {
   fullSongList?: string[];
 }
 
-type CategoryFilter = 'all' | 'principais' | 'cias' | 'clamor';
+type CategoryFilter = 'all' | 'principais' | 'cias' | 'clamor' | 'avulsos';
 type MainTab = 'ano' | 'intervalos' | 'meses';
 
 interface MonthlyData {
@@ -55,18 +56,6 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
   const [fastSearchTerm, setFastSearchTerm] = useState('');
   const [fastIntervalFilter, setFastIntervalFilter] = useState<'all' | '7' | '15' | '30'>('all');
 
-  const extractNumber = (song: string): number | null => {
-    const match = song.match(/(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-  };
-
-  const isClamorSong = (song: string): boolean => {
-    const isCias = song.startsWith('(CIAS)');
-    const num = extractNumber(song);
-    if (num === null) return false;
-    return isCias ? (num >= 1 && num <= 13) : (num >= 1 && num <= 56);
-  };
-
   // Anos disponíveis ordenados
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -102,9 +91,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
 
     sortedServices.forEach((r, idx) => {
       r.songs.forEach(song => {
-        if (category === 'principais' && (song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'cias' && (!song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'clamor' && !isClamorSong(song)) return;
+        if (!matchesCategory(song, category)) return;
 
         totalPraiseExecutionsInYear++;
         if (!songOccurrences[song]) {
@@ -211,9 +198,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
       m.services.push(r);
 
       r.songs.forEach(song => {
-        if (category === 'principais' && (song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'cias' && (!song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'clamor' && !isClamorSong(song)) return;
+        if (!matchesCategory(song, category)) return;
 
         m.songCounts[song] = (m.songCounts[song] || 0) + 1;
       });
@@ -288,9 +273,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
 
     yearRecords.forEach(r => {
       r.songs.forEach(song => {
-        if (category === 'principais' && (song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'cias' && (!song.startsWith('(CIAS)') || isClamorSong(song))) return;
-        if (category === 'clamor' && !isClamorSong(song)) return;
+        if (!matchesCategory(song, category)) return;
 
         totalExecs++;
         if (!songMap[song]) {
@@ -453,6 +436,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                   { id: 'principais', label: 'Principais' },
                   { id: 'cias', label: 'CIAS' },
                   { id: 'clamor', label: 'Clamor' },
+                  { id: 'avulsos', label: 'Avulsos' },
                 ] as const
               ).map(c => (
                 <button
