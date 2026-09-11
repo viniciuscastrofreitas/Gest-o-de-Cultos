@@ -13,6 +13,7 @@ import WorkerRanking from './components/WorkerRanking';
 import PraiseLearningList from './components/PraiseLearningList';
 import WorkerManager from './components/WorkerManager';
 import CollectionsManager from './components/CollectionsManager';
+import AttendanceAnalytics from './components/AttendanceAnalytics';
 import AuthForm from './components/AuthForm';
 import { initDB, saveData, loadData, getImmediateCachedData } from './db';
 import { supabase } from './supabase';
@@ -23,7 +24,7 @@ const App: React.FC = () => {
   // 1. CARREGAMENTO INSTANTÂNEO DIRETO DO DISCO DO CELULAR (0ms de espera)
   const cachedInitial = useMemo(() => getImmediateCachedData(), []);
 
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'unplayed' | 'learning' | 'praise-ranking' | 'repetition' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'attendance' | 'unplayed' | 'learning' | 'praise-ranking' | 'repetition' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>(() => cachedInitial?.history || []);
   const [churchName, setChurchName] = useState<string>(() => cachedInitial?.churchName || 'Clique aqui para nomear sua igreja');
   const [isEditingChurchName, setIsEditingChurchName] = useState(false);
@@ -307,6 +308,7 @@ const App: React.FC = () => {
   const menuItems = [
     { id: 'new', icon: 'add_circle', label: 'Novo Culto' },
     { id: 'history', icon: 'history', label: 'Histórico' },
+    { id: 'attendance', icon: 'groups', label: 'Frequência' },
     { id: 'unplayed', icon: 'assignment_late', label: 'Hinos Restantes' },
     { id: 'learning', icon: 'school', label: 'Aprendizado' },
     { id: 'praise-ranking', icon: 'trending_up', label: 'Ranking Hinos' },
@@ -516,6 +518,17 @@ const App: React.FC = () => {
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => { setCustomSongs(prev => [...prev, s]); setPraiseCollection(prev => [...new Set([...prev, s])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))); }} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}
+          {activeTab === 'attendance' && (
+            <AttendanceAnalytics
+              history={history}
+              onUpdateHistory={newH => setHistory(newH)}
+              onSelectRecordForEdit={r => {
+                setEditingId(r.id);
+                setDraft({ ...r });
+                setActiveTab('new');
+              }}
+            />
+          )}
           {activeTab === 'learning' && <PraiseLearningList fullSongList={fullSongList} learningList={learningList} setLearningList={setLearningList} />}
           {activeTab === 'workers' && <WorkerRanking history={history} workers={customWorkers} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
