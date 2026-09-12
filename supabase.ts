@@ -6,7 +6,24 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://suciiybkjxhbldwfwgnq.supabase.co';
 const supabaseKey = 'sb_publishable_Qm1_2UMd2Y0lTKMR6jgpSA_Dd4taZOh';
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  }
+});
+
+// Tratamento silencioso caso haja token expirado ou corrompido no storage local
+if (typeof window !== 'undefined') {
+  // Se o Supabase falhar na atualização de token, limpamos o storage local para não travar o app
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason?.message?.includes('Refresh Token') || event.reason?.message?.includes('refresh_token_not_found')) {
+      event.preventDefault();
+      supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    }
+  });
+}
 
 /**
  * Verifica se a conexão com o banco de dados está ativa e se a tabela user_data existe.

@@ -20,13 +20,33 @@ import { supabase } from './supabase';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineBanner } from './components/OfflineBanner';
 
+const getTodayDate = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+const getSpecialServiceInfo = (dateString: string) => {
+  const d = new Date(dateString + 'T12:00:00');
+  const day = d.getDay();
+  if (day === 1) return { name: 'Glorificação', color: 'text-indigo-400' };
+  if (day === 3) return { name: 'Senhoras', color: 'text-rose-400' };
+  if (day === 4) return { name: 'Oração', color: 'text-amber-400' };
+  return null;
+};
+
 const App: React.FC = () => {
   // 1. CARREGAMENTO INSTANTÂNEO DIRETO DO DISCO DO CELULAR (0ms de espera)
-  const cachedInitial = useMemo(() => getImmediateCachedData(), []);
+  const cachedInitial = getImmediateCachedData();
 
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'attendance' | 'unplayed' | 'learning' | 'praise-ranking' | 'repetition' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
   const [history, setHistory] = useState<ServiceRecord[]>(() => cachedInitial?.history || []);
-  const [churchName, setChurchName] = useState<string>(() => cachedInitial?.churchName || 'Clique aqui para nomear sua igreja');
+  const [churchName, setChurchName] = useState<string>(() => {
+    const cached = cachedInitial?.churchName;
+    if (!cached || cached === 'Clique aqui para nomear sua igreja') {
+      return 'Clique aqui';
+    }
+    return cached;
+  });
   const [isEditingChurchName, setIsEditingChurchName] = useState(false);
   const [customSongs, setCustomSongs] = useState<string[]>(() => cachedInitial?.customSongs || []);
   const [praiseCollection, setPraiseCollection] = useState<string[]>(() => {
@@ -51,20 +71,6 @@ const App: React.FC = () => {
   const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
   const lastCloudUpdateRef = useRef<string | null>(null);
   const syncTimeoutRef = useRef<number | null>(null);
-
-  const getTodayDate = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  };
-
-  const getSpecialServiceInfo = (dateString: string) => {
-    const d = new Date(dateString + 'T12:00:00');
-    const day = d.getDay();
-    if (day === 1) return { name: 'Glorificação', color: 'text-indigo-400' };
-    if (day === 3) return { name: 'Senhoras', color: 'text-rose-400' };
-    if (day === 4) return { name: 'Oração', color: 'text-amber-400' };
-    return null;
-  };
 
   const todaySpecial = useMemo(() => getSpecialServiceInfo(getTodayDate()), []);
 
@@ -108,7 +114,9 @@ const App: React.FC = () => {
           lastCloudUpdateRef.current = cloudTimestamp;
           const remote = data.json_data;
           if (remote.history) setHistory(remote.history);
-          if (remote.churchName) setChurchName(remote.churchName);
+          if (remote.churchName) {
+            setChurchName(remote.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : remote.churchName);
+          }
           if (remote.customSongs) setCustomSongs(remote.customSongs);
           if (remote.customWorkers) setCustomWorkers(remote.customWorkers);
           if (remote.learningList) setLearningList(remote.learningList);
@@ -160,11 +168,21 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Recupera sessão com timeout curto para não prender em modo offline
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    }).catch(() => {
-      // Ignora erro de rede se estiver offline
+    // Recupera sessão com segurança sem quebrar se o token estiver expirado
+    supabase.auth.getSession().then((res) => {
+      if (res.error) {
+        if (res.error.message?.includes('Refresh Token') || res.error.message?.includes('refresh_token')) {
+          supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        }
+        setUser(null);
+        return;
+      }
+      setUser(res.data?.session?.user ?? null);
+    }).catch((err) => {
+      if (err?.message?.includes('Refresh Token')) {
+        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      }
+      setUser(null);
     });
 
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -186,7 +204,9 @@ const App: React.FC = () => {
         
         if (data) {
           if (data.history && data.history.length > 0) setHistory(data.history);
-          if (data.churchName && data.churchName !== 'Clique aqui para nomear sua igreja') setChurchName(data.churchName);
+          if (data.churchName) {
+            setChurchName(data.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : data.churchName);
+          }
           if (data.customSongs) setCustomSongs(data.customSongs);
           if (data.customWorkers) setCustomWorkers(data.customWorkers);
           if (data.learningList) setLearningList(data.learningList);
@@ -333,34 +353,37 @@ const App: React.FC = () => {
     const statusText = syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'syncing' ? 'Sincronizando...' : isLocalSafe ? '100% Salvo no Aparelho' : 'Erro Conexão';
 
     return (
-      <div className="flex items-center gap-3.5">
-        <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 rounded-2xl shadow-lg shadow-indigo-900/40 flex items-center justify-center p-1 border border-white/10 shrink-0 relative overflow-hidden group">
+      <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 rounded-2xl shadow-lg shadow-indigo-900/40 flex items-center justify-center p-1 border border-white/10 shrink-0 relative overflow-hidden group">
           <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <span className="material-icons text-white text-2xl drop-shadow-md">assignment</span>
+          <span className="material-icons text-white text-xl sm:text-2xl drop-shadow-md">assignment</span>
         </div>
         <div className="flex flex-col min-w-0 flex-1">
           {isEditingChurchName ? (
             <input 
               autoFocus
-              className="bg-white/10 border-b border-white/30 text-white font-black text-lg outline-none w-full uppercase"
+              className="bg-white/10 border-b border-white/30 text-white font-black text-base sm:text-lg outline-none w-full uppercase"
               value={churchName}
+              placeholder="Nome da Igreja"
               onChange={(e) => setChurchName(e.target.value)}
               onBlur={() => setIsEditingChurchName(false)}
               onKeyDown={(e) => e.key === 'Enter' && setIsEditingChurchName(false)}
             />
           ) : (
-            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingChurchName(true)}>
-              <h1 className="text-white font-black text-lg tracking-tighter leading-tight uppercase whitespace-nowrap overflow-hidden text-ellipsis">{churchName}</h1>
-              <span className="material-icons text-white/20 text-xs group-hover:text-white/60 transition-colors">edit</span>
+            <div className="flex items-center gap-1.5 group cursor-pointer min-w-0" onClick={() => setIsEditingChurchName(true)} title="Clique para nomear sua igreja">
+              <h1 className="text-white font-black text-base sm:text-lg tracking-tight leading-tight uppercase truncate">
+                {churchName}
+              </h1>
+              <span className="material-icons text-white/30 text-xs group-hover:text-white/70 transition-colors shrink-0">edit</span>
             </div>
           )}
-          <div className="flex items-center gap-2 mt-0.5">
-             <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 mt-0.5 min-w-0">
+             <div className="flex items-center gap-1 shrink-0">
                <span className={`material-icons text-[12px] ${statusColor}`}>{statusIcon}</span>
                <span className="text-slate-400 font-black text-[9px] uppercase tracking-widest">{statusText}</span>
              </div>
-             <div className="h-3 w-px bg-white/10 mx-1"></div>
-             <div className="flex items-center gap-1">
+             <div className="h-3 w-px bg-white/10 mx-0.5 shrink-0"></div>
+             <div className="flex items-center gap-1 shrink-0">
                <span className="material-icons text-[12px] text-amber-400">description</span>
                <span className="text-amber-400 font-black text-[9px] uppercase tracking-widest">{history.length} Cultos</span>
              </div>
@@ -457,12 +480,19 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      <header className="md:hidden bg-[#1e293b] text-white p-6 sticky top-0 z-[200] flex justify-between items-center shadow-2xl border-b border-white/5">
-        <AppBrand />
-        <div className="flex items-center gap-3">
+      <header className="md:hidden bg-[#1e293b] text-white px-4 py-3 sm:px-6 sm:py-4 sticky top-0 z-[200] flex justify-between items-center gap-2 shadow-2xl border-b border-white/5">
+        <div className="min-w-0 flex-1">
+          <AppBrand />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <PWAInstallButton variant="header" />
-          <button onClick={() => setIsMobileMenuOpen(true)} className="w-12 h-12 bg-white/5 rounded-2xl active:scale-90 transition-transform flex items-center justify-center">
-            <span className="material-icons text-2xl">menu</span>
+          <button 
+            onClick={() => setIsMobileMenuOpen(true)} 
+            className="w-10 h-10 sm:w-12 sm:h-12 bg-white/5 hover:bg-white/10 rounded-2xl active:scale-90 transition-transform flex items-center justify-center text-white shrink-0"
+            title="Menu de Opções"
+            aria-label="Menu de Opções"
+          >
+            <span className="material-icons text-2xl">more_vert</span>
           </button>
         </div>
       </header>
@@ -471,9 +501,11 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[300] md:hidden">
           <div className="absolute inset-0 bg-[#0f172a]/95 backdrop-blur-xl" onClick={() => setIsMobileMenuOpen(false)}></div>
           <div className="absolute top-0 right-0 bottom-0 w-[85%] bg-[#1e293b] shadow-2xl flex flex-col animate-fadeIn border-l border-white/5">
-            <div className="p-8 flex justify-between items-center border-b border-white/5">
-              <AppBrand />
-              <button onClick={() => setIsMobileMenuOpen(false)} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-white/20"><span className="material-icons">close</span></button>
+            <div className="p-6 sm:p-8 flex justify-between items-center border-b border-white/5 gap-2">
+              <div className="min-w-0 flex-1">
+                <AppBrand />
+              </div>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-white/40 hover:text-white shrink-0"><span className="material-icons">close</span></button>
             </div>
             <UserHeader />
             <nav className="flex-1 py-4 overflow-y-auto">

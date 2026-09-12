@@ -16,6 +16,9 @@ export const getImmediateCachedData = (): AppData | null => {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed && parsed.churchName === 'Clique aqui para nomear sua igreja') {
+        parsed.churchName = 'Clique aqui';
+      }
       return parsed;
     }
   } catch (err) {

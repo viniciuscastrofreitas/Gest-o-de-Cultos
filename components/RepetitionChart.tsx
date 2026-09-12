@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ServiceRecord, SongStats } from '../types';
 import { matchesCategory } from '../utils/praiseCategories';
 
@@ -69,7 +69,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
     return Array.from(years).sort((a, b) => b - a);
   }, [history]);
 
-  useMemo(() => {
+  useEffect(() => {
     if (!availableYears.includes(selectedYear) && availableYears.length > 0) {
       setSelectedYear(availableYears[0]);
     }

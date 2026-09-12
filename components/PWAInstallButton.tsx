@@ -26,7 +26,7 @@ export const PWAInstallButton: React.FC<Props> = ({ variant = 'header' }) => {
     }
   };
 
-  const GuideModal = () => (
+  const renderGuideModal = () => (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 animate-fadeIn">
       <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={() => setShowGuideModal(false)} />
       <div className="relative bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-slate-100 text-slate-900 animate-scaleUp">
@@ -144,7 +144,7 @@ export const PWAInstallButton: React.FC<Props> = ({ variant = 'header' }) => {
             </button>
           </div>
         </div>
-        {showGuideModal && <GuideModal />}
+        {showGuideModal && renderGuideModal()}
       </>
     );
   }
@@ -159,7 +159,7 @@ export const PWAInstallButton: React.FC<Props> = ({ variant = 'header' }) => {
         <span className="material-icons text-xs text-indigo-400">install_mobile</span>
         <span className="hidden sm:inline">Instalar App</span>
       </button>
-      {showGuideModal && <GuideModal />}
+      {showGuideModal && renderGuideModal()}
     </>
   );
 };
