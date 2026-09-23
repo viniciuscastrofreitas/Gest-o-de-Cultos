@@ -248,6 +248,37 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, pr
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
         </div>
       </div>
+
+      {/* Forçar Atualização e Limpar Cache */}
+      <div className="card-main p-8 bg-gradient-to-r from-slate-900 to-indigo-950 text-white border-0 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-indigo-400 shrink-0">
+            <span className="material-icons text-2xl">refresh</span>
+          </div>
+          <div>
+            <h4 className="font-black text-sm uppercase tracking-wider text-white">Atualização do Sistema & Limpeza de Cache</h4>
+            <p className="text-slate-400 text-xs mt-0.5">Se o aplicativo estiver exibindo versão antiga ou travado em cache no seu dispositivo, recarregue agora.</p>
+          </div>
+        </div>
+        <button
+          onClick={async () => {
+            if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            if ('serviceWorker' in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(r => r.unregister()));
+            }
+            sessionStorage.clear();
+            window.location.reload();
+          }}
+          className="w-full md:w-auto px-6 py-3.5 bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shrink-0 flex items-center justify-center gap-2"
+        >
+          <span className="material-icons text-sm">autorenew</span>
+          Forçar Atualização
+        </button>
+      </div>
     </div>
   );
 };

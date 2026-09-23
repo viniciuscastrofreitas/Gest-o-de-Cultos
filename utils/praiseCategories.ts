@@ -16,6 +16,58 @@
 
 export type SongCategory = 'principais' | 'cias' | 'clamor' | 'avulsos';
 
+/**
+ * Verifica se um texto na lista de louvores é um marcador/organizador de grupo
+ * (ex: "GRUPO DE LOUVOR", "GRUPO DE SENHORAS", "GRUPO DE JOVENS", etc.)
+ * Esses nomes são usados para estruturar/dividir a ordem do culto
+ * e NÃO devem ser contabilizados como louvores cantados, repetições, rankings ou estatísticas.
+ */
+export const isGroupHeaderOrMarker = (song: string): boolean => {
+  if (!song) return false;
+  const trimmed = song.trim();
+
+  // Se tem número no início ou prefixo (CIAS) numerado, é um hino real numerado (ex: "666 - O QUE ME DÁS"), não é marcador
+  if (/^\(?CIAS\)?\s*\d+/i.test(trimmed) || /^\d+\s*[-–]/i.test(trimmed)) {
+    return false;
+  }
+
+  const normalized = trimmed
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // Marcadores de grupo canônicos
+  const markers = [
+    'GRUPO DE LOUVOR',
+    'GRUPO DE SENHORAS',
+    'GRUPO DE JOVENS',
+    'GRUPO DE CRIANCAS',
+    'GRUPO DE ADOLESCENTES',
+    'GRUPO DE VAROES',
+    'GRUPO DE HOMENS',
+    'GRUPO DE INTERMEDIARIOS',
+    'GRUPO DOS JOVENS',
+    'GRUPO DAS SENHORAS',
+    'GRUPO DAS CRIANCAS',
+    'GRUPO DOS VAROES',
+    'GRUPO INSTRUMENTAL',
+    'GRUPO DE INSTRUMENTISTAS'
+  ];
+
+  if (markers.includes(normalized)) return true;
+
+  // Cobre variações com traços ou pontuação de cabeçalho: "--- GRUPO DE JOVENS ---", "GRUPO DE JOVENS:"
+  const stripped = normalized.replace(/^[-–—=*#\s]+|[-–—=*#\s:]+$/g, '');
+  if (markers.includes(stripped)) return true;
+
+  // Cobre qualquer início "GRUPO DE ...", "GRUPO DOS ...", "GRUPO DAS ..." sem conter dígitos numéricos
+  if (/^GRUPO\s+(DE|DOS|DAS)\s+/i.test(normalized) && !/\d+/.test(normalized)) {
+    return true;
+  }
+
+  return false;
+};
+
 export const extractSongNumber = (song: string): number | null => {
   if (!song) return null;
   // Procura padrão de número logo no início ou após prefixo (CIAS)
@@ -31,7 +83,7 @@ export const extractSongNumber = (song: string): number | null => {
  * O hino 00 pertence à categoria Geral (Principais), não ao Clamor.
  */
 export const isClamorSong = (song: string): boolean => {
-  if (!song) return false;
+  if (!song || isGroupHeaderOrMarker(song)) return false;
   const trimmed = song.trim();
   // Os de clamor da CIAS não devem entrar nas estatísticas do Clamor (ficam só nas CIAS)
   if (trimmed.startsWith('(CIAS)')) return false;
@@ -45,15 +97,16 @@ export const isClamorSong = (song: string): boolean => {
  * Retorna true se for um louvor CIAS (qualquer hino oficial de CIAS, inclusive Clamor CIAS).
  */
 export const isCiasSong = (song: string): boolean => {
-  if (!song) return false;
+  if (!song || isGroupHeaderOrMarker(song)) return false;
   return song.trim().startsWith('(CIAS)');
 };
 
 /**
  * Retorna true se for Louvor Avulso (não é da coletânea geral 00-794 nem das CIAS 01-241).
+ * Marcadores de grupo NÃO são louvores avulsos.
  */
 export const isAvulsoSong = (song: string): boolean => {
-  if (!song) return false;
+  if (!song || isGroupHeaderOrMarker(song)) return false;
   const trimmed = song.trim();
   const num = extractSongNumber(trimmed);
 
@@ -75,7 +128,7 @@ export const isAvulsoSong = (song: string): boolean => {
  * Sem prefixo (CIAS).
  */
 export const isPrincipalSong = (song: string): boolean => {
-  if (!song) return false;
+  if (!song || isGroupHeaderOrMarker(song)) return false;
   const trimmed = song.trim();
   if (trimmed.startsWith('(CIAS)')) return false;
   const num = extractSongNumber(trimmed);
@@ -86,7 +139,7 @@ export const isPrincipalSong = (song: string): boolean => {
 /**
  * Verifica se um hino corresponde ao filtro de categoria selecionado pelo usuário.
  * Filtros suportados:
- * - 'all': Todos os louvores
+ * - 'all': Todos os louvores (exceto marcadores de grupo organizacionais)
  * - 'principais': Hinos da Coletânea Geral (00 e 57 a 794)
  * - 'cias': Todos os louvores das CIAS (INCLUINDO o Clamor das CIAS)
  * - 'clamor': Hinos de Clamor exclusivamente da Coletânea Geral (01 a 56)
@@ -96,7 +149,7 @@ export const matchesCategory = (
   song: string,
   category: 'all' | 'principais' | 'cias' | 'clamor' | 'avulsos'
 ): boolean => {
-  if (!song) return false;
+  if (!song || isGroupHeaderOrMarker(song)) return false;
   if (category === 'all') return true;
 
   const isCias = isCiasSong(song);

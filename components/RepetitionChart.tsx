@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ServiceRecord, SongStats } from '../types';
-import { matchesCategory } from '../utils/praiseCategories';
+import { matchesCategory, isGroupHeaderOrMarker } from '../utils/praiseCategories';
+import { ShareRepetitionModal } from './ShareRepetitionModal';
 
 interface Props {
   history: ServiceRecord[];
   songStats: Record<string, SongStats>;
   fullSongList?: string[];
+  churchName?: string;
 }
 
 type CategoryFilter = 'all' | 'principais' | 'cias' | 'clamor' | 'avulsos';
@@ -46,7 +48,7 @@ interface FastRepeatItem {
   servicesBetween: number;
 }
 
-export const RepetitionChart: React.FC<Props> = ({ history }) => {
+export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
   const [mainTab, setMainTab] = useState<MainTab>('ano');
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
@@ -55,6 +57,16 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [fastSearchTerm, setFastSearchTerm] = useState('');
   const [fastIntervalFilter, setFastIntervalFilter] = useState<'all' | '7' | '15' | '30'>('all');
+  const [shareModalData, setShareModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    messageText: string;
+  }>({
+    isOpen: false,
+    title: '',
+    messageText: '',
+  });
 
   // Anos disponíveis ordenados
   const availableYears = useMemo(() => {
@@ -91,6 +103,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
 
     sortedServices.forEach((r, idx) => {
       r.songs.forEach(song => {
+        if (isGroupHeaderOrMarker(song)) return;
         if (!matchesCategory(song, category)) return;
 
         totalPraiseExecutionsInYear++;
@@ -198,6 +211,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
       m.services.push(r);
 
       r.songs.forEach(song => {
+        if (isGroupHeaderOrMarker(song)) return;
         if (!matchesCategory(song, category)) return;
 
         m.songCounts[song] = (m.songCounts[song] || 0) + 1;
@@ -273,6 +287,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
 
     yearRecords.forEach(r => {
       r.songs.forEach(song => {
+        if (isGroupHeaderOrMarker(song)) return;
         if (!matchesCategory(song, category)) return;
 
         totalExecs++;
@@ -406,6 +421,220 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
     if (!dateStr) return '-';
     const [y, m, d] = dateStr.split('-');
     return `${d}/${m}/${y}`;
+  };
+
+  const getChurchHeader = () => {
+    if (churchName && churchName !== 'Clique aqui' && churchName !== 'Clique aqui para nomear sua igreja') {
+      return `🏛️ *IGREJA CRISTÃ MARANATA - ${churchName.toUpperCase()}*`;
+    }
+    return `🏛️ *IGREJA CRISTÃ MARANATA*`;
+  };
+
+  const getCategoryLabel = (cat: CategoryFilter) => {
+    switch (cat) {
+      case 'principais': return 'Louvores Principais';
+      case 'cias': return 'CIAS';
+      case 'clamor': return 'Louvores de Clamor';
+      case 'avulsos': return 'Louvores Avulsos';
+      case 'all': default: return 'Todos os Louvores';
+    }
+  };
+
+  // 1. Compartilhar os louvores selecionados no ano (ex: Principais cantados 1 vez)
+  const handleShareCurrentYearGroup = () => {
+    const catLabel = getCategoryLabel(category);
+    const group = yearlyData.countGroups.find(g => g.times === selectedTimesFilter);
+    const filterTitle = selectedTimesFilter === 'all' 
+      ? 'Todos os Louvores' 
+      : `Cantados ${group?.label || `${selectedTimesFilter}x`}`;
+
+    const songsToShare = displayedYearSongs;
+    const hasSearch = searchTerm.trim().length > 0;
+
+    let text = `${getChurchHeader()}\n`;
+    text += `📊 *TAXA DE REPETIÇÃO - ANO ${selectedYear}*\n\n`;
+    text += `🎵 *Categoria:* ${catLabel}\n`;
+    text += `📌 *Filtro:* ${filterTitle}${hasSearch ? ` (Busca: "${searchTerm}")` : ''}\n`;
+    text += `📋 *Total:* ${songsToShare.length} ${songsToShare.length === 1 ? 'louvor' : 'louvores'}\n`;
+    text += `─────────────────────────\n\n`;
+
+    if (songsToShare.length === 0) {
+      text += `Nenhum louvor registrado nesta categoria e filtro.\n\n`;
+    } else {
+      songsToShare.forEach((item, index) => {
+        const lastDateStr = item.lastDate ? ` (Último: ${formatDate(item.lastDate)})` : '';
+        const countStr = selectedTimesFilter === 'all' ? ` [${item.count}x]` : '';
+        text += `${index + 1}. ${item.song}${countStr}${lastDateStr}\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `─────────────────────────\n`;
+    text += `📈 *Resumo Geral de ${selectedYear}:*\n`;
+    text += `• Total de Cultos: ${yearlyData.servicesCount}\n`;
+    text += `• Total de Execuções: ${yearlyData.totalExecs}\n`;
+    text += `• Hinos Únicos no Ano: ${yearlyData.uniqueCount}\n`;
+    text += `• Taxa de Repetição Geral: ${yearlyData.overallRate.toFixed(1)}%\n\n`;
+    text += `✨ *Maranata: O Senhor Jesus Vem!*`;
+
+    setShareModalData({
+      isOpen: true,
+      title: `${catLabel} - ${filterTitle} (${selectedYear})`,
+      subtitle: `${songsToShare.length} louvores selecionados`,
+      messageText: text,
+    });
+  };
+
+  // 2. Compartilhar resumo consolidado anual de repetição
+  const handleShareYearSummary = () => {
+    const catLabel = getCategoryLabel(category);
+
+    let text = `${getChurchHeader()}\n`;
+    text += `📊 *CONSOLIDADO DA TAXA DE REPETIÇÃO - ANO ${selectedYear}*\n\n`;
+    text += `🎵 *Categoria:* ${catLabel}\n`;
+    text += `📅 *Ano Analisado:* ${selectedYear}\n`;
+    text += `⛪ *Cultos Realizados:* ${yearlyData.servicesCount}\n`;
+    text += `🎶 *Total Cantado:* ${yearlyData.totalExecs} louvores\n`;
+    text += `🌟 *Hinos Únicos:* ${yearlyData.uniqueCount}\n`;
+    text += `🔁 *Repetições:* ${yearlyData.repeated} (${yearlyData.overallRate.toFixed(1)}% de repetição)\n\n`;
+    text += `─────────────────────────\n`;
+    text += `📊 *DISTRIBUIÇÃO POR FREQUÊNCIA:*\n\n`;
+
+    yearlyData.countGroups.forEach(g => {
+      const pct = yearlyData.uniqueCount > 0 ? ((g.songs.length / yearlyData.uniqueCount) * 100).toFixed(0) : '0';
+      text += `• *${g.label.toUpperCase()}:* ${g.songs.length} hinos (${pct}% do repertório)\n`;
+    });
+
+    const topSongs = yearlyData.countGroups
+      .slice()
+      .reverse()
+      .flatMap(g => g.songs)
+      .slice(0, 10);
+
+    if (topSongs.length > 0) {
+      text += `\n─────────────────────────\n`;
+      text += `🔥 *MAIS CANTADOS EM ${selectedYear}:*\n`;
+      topSongs.forEach((s, idx) => {
+        text += `${idx + 1}. ${s.song} — ${s.count}x\n`;
+      });
+    }
+
+    text += `\n─────────────────────────\n`;
+    text += `✨ *Maranata: O Senhor Jesus Vem!*`;
+
+    setShareModalData({
+      isOpen: true,
+      title: `Resumo da Taxa de Repetição (${selectedYear})`,
+      subtitle: `${catLabel} • ${yearlyData.overallRate.toFixed(1)}% de repetição`,
+      messageText: text,
+    });
+  };
+
+  // 3. Compartilhar repetições em menos de 30 dias
+  const handleShareFastRepeats = () => {
+    const catLabel = getCategoryLabel(category);
+    const filterDesc = fastIntervalFilter === '7' 
+      ? '≤ 7 Dias (mesma semana)' 
+      : fastIntervalFilter === '15' 
+      ? '8 a 15 Dias (em 2 semanas)' 
+      : fastIntervalFilter === '30' 
+      ? '16 a 30 Dias (no mesmo mês)' 
+      : 'Menos de 30 Dias';
+
+    const list = displayedFastRepeats;
+
+    let text = `⚠️ *ALERTA DE PROXIMIDADE - ICM*\n`;
+    text += `${getChurchHeader()}\n\n`;
+    text += `📊 *REPETIÇÕES EM CURTO INTERVALO (${selectedYear})*\n`;
+    text += `🎵 *Categoria:* ${catLabel}\n`;
+    text += `⏱ *Filtro de Intervalo:* ${filterDesc}\n`;
+    text += `📋 *Episódios Listados:* ${list.length}\n`;
+    text += `🔥 *Taxa Rápida Geral:* ${fastRepetitionData.fastRepeatRate.toFixed(1)}% (${fastRepetitionData.songsWithFastRepeatCount} de ${fastRepetitionData.totalUniqueSongsInYear} hinos únicos)\n`;
+    text += `─────────────────────────\n\n`;
+
+    if (list.length === 0) {
+      text += `Nenhum hino repetiu neste intervalo em ${selectedYear}.\n\n`;
+    } else {
+      list.forEach((item, idx) => {
+        const intervalText = item.daysInterval === 0 
+          ? 'Mesmo dia' 
+          : item.daysInterval === 1 
+          ? '1 dia depois' 
+          : `${item.daysInterval} dias depois`;
+        const betweenText = item.servicesBetween > 0 
+          ? `${item.servicesBetween} culto(s) de intervalo` 
+          : 'Cultos consecutivos!';
+
+        text += `${idx + 1}. *${item.song}*\n`;
+        text += `   📅 ${formatDate(item.firstDate)} ➔ ${formatDate(item.secondDate)}\n`;
+        text += `   ⏳ ${intervalText} (${betweenText})\n\n`;
+      });
+    }
+
+    text += `─────────────────────────\n`;
+    text += `✨ *Maranata: O Senhor Jesus Vem!*`;
+
+    setShareModalData({
+      isOpen: true,
+      title: `Repetições em < 30 Dias (${selectedYear})`,
+      subtitle: `${catLabel} • ${list.length} episódios`,
+      messageText: text,
+    });
+  };
+
+  // 4. Compartilhar detalhamento do mês ativo
+  const handleShareMonthData = () => {
+    if (!activeMonth) return;
+    const catLabel = getCategoryLabel(category);
+
+    let text = `${getChurchHeader()}\n`;
+    text += `📅 *TAXA DE REPETIÇÃO - ${activeMonth.fullMonth.toUpperCase()}*\n\n`;
+    text += `🎵 *Categoria:* ${catLabel}\n`;
+    text += `⛪ *Cultos no Mês:* ${activeMonth.servicesCount}\n`;
+    text += `🎶 *Louvores Cantados:* ${activeMonth.totalExecutions}\n`;
+    text += `🌟 *Hinos Únicos:* ${activeMonth.uniqueSongs}\n`;
+    text += `🔁 *Repetições no Mês:* ${activeMonth.repeatedTimes}\n`;
+    text += `📊 *Taxa de Repetição:* ${activeMonth.repetitionRate.toFixed(1)}%\n\n`;
+
+    text += `─────────────────────────\n`;
+    text += `1️⃣ *CANTADOS APENAS 1 VEZ (${activeMonth.onceSongs.length}):*\n`;
+    if (activeMonth.onceSongs.length === 0) {
+      text += `Nenhum\n`;
+    } else {
+      activeMonth.onceSongs.forEach((s, idx) => {
+        text += `${idx + 1}. ${s}\n`;
+      });
+    }
+
+    text += `\n─────────────────────────\n`;
+    text += `2️⃣ *CANTADOS 2 VEZES (${activeMonth.twiceSongs.length}):*\n`;
+    if (activeMonth.twiceSongs.length === 0) {
+      text += `Nenhum\n`;
+    } else {
+      activeMonth.twiceSongs.forEach((s, idx) => {
+        text += `${idx + 1}. ${s}\n`;
+      });
+    }
+
+    text += `\n─────────────────────────\n`;
+    text += `🔥 *CANTADOS 3X OU MAIS (${activeMonth.manySongs.length}):*\n`;
+    if (activeMonth.manySongs.length === 0) {
+      text += `Nenhum\n`;
+    } else {
+      activeMonth.manySongs.forEach((item, idx) => {
+        text += `${idx + 1}. ${item.song} — ${item.count}x\n`;
+      });
+    }
+
+    text += `\n─────────────────────────\n`;
+    text += `✨ *Maranata: O Senhor Jesus Vem!*`;
+
+    setShareModalData({
+      isOpen: true,
+      title: `Taxa de Repetição - ${activeMonth.fullMonth}`,
+      subtitle: `${catLabel} • ${activeMonth.repetitionRate.toFixed(1)}% repetição`,
+      messageText: text,
+    });
   };
 
   return (
@@ -565,14 +794,24 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                   </p>
                 </div>
 
-                {/* Caixa da Porcentagem Geral */}
-                <div className="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 border border-white/15 text-center shrink-0 min-w-[76px] sm:min-w-[90px]">
-                  <span className="text-2xl sm:text-4xl font-black text-white tracking-tight block leading-none">
-                    {yearlyData.overallRate.toFixed(1)}%
-                  </span>
-                  <span className="text-[7.5px] sm:text-[8px] font-black text-indigo-300 uppercase tracking-wider block mt-1">
-                    Repetição
-                  </span>
+                {/* Caixa da Porcentagem Geral + Botão de Compartilhar Resumo */}
+                <div className="flex flex-col items-center gap-1.5 shrink-0">
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 border border-white/15 text-center min-w-[76px] sm:min-w-[90px]">
+                    <span className="text-2xl sm:text-4xl font-black text-white tracking-tight block leading-none">
+                      {yearlyData.overallRate.toFixed(1)}%
+                    </span>
+                    <span className="text-[7.5px] sm:text-[8px] font-black text-indigo-300 uppercase tracking-wider block mt-1">
+                      Repetição
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleShareYearSummary}
+                    className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 text-[8.5px] font-black text-white uppercase tracking-wider transition-all"
+                    title="Compartilhar resumo completo de frequências do ano"
+                  >
+                    <span className="material-icons text-xs">share</span>
+                    <span>Resumo</span>
+                  </button>
                 </div>
               </div>
 
@@ -651,16 +890,27 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                 </p>
               </div>
 
-              {/* Busca rápida */}
-              <div className="relative w-full sm:w-52">
-                <span className="material-icons absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">search</span>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  placeholder="Buscar hino..."
-                  className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"
-                />
+              {/* Ações: Compartilhar + Busca rápida */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={handleShareCurrentYearGroup}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm active:scale-95 transition-all shrink-0"
+                  title="Compartilhar lista selecionada no WhatsApp"
+                >
+                  <span className="material-icons text-base">share</span>
+                  <span>Compartilhar</span>
+                </button>
+
+                <div className="relative flex-1 sm:w-48">
+                  <span className="material-icons absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">search</span>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    placeholder="Buscar hino..."
+                    className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -878,16 +1128,27 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                 </p>
               </div>
 
-              {/* Busca rápida */}
-              <div className="relative w-full sm:w-52">
-                <span className="material-icons absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">search</span>
-                <input
-                  type="text"
-                  value={fastSearchTerm}
-                  onChange={e => setFastSearchTerm(e.target.value)}
-                  placeholder="Buscar hino..."
-                  className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
-                />
+              {/* Ações: Compartilhar + Busca rápida */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={handleShareFastRepeats}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm active:scale-95 transition-all shrink-0"
+                  title="Compartilhar repetições em menos de 30 dias"
+                >
+                  <span className="material-icons text-base">share</span>
+                  <span>Compartilhar</span>
+                </button>
+
+                <div className="relative flex-1 sm:w-48">
+                  <span className="material-icons absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">search</span>
+                  <input
+                    type="text"
+                    value={fastSearchTerm}
+                    onChange={e => setFastSearchTerm(e.target.value)}
+                    placeholder="Buscar hino..."
+                    className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1058,7 +1319,7 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                       </select>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-3 bg-white sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-slate-200/60">
+                    <div className="flex items-center justify-between sm:justify-end gap-2 bg-white sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-slate-200/60 flex-wrap">
                       <div>
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Taxa do Mês</span>
                         <span className="text-lg sm:text-xl font-black text-slate-900 leading-none block">
@@ -1074,6 +1335,14 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
                       }`}>
                         {activeMonth.servicesCount} cultos • {activeMonth.totalExecutions} louvores
                       </span>
+                      <button
+                        onClick={handleShareMonthData}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm active:scale-95 transition-all shrink-0"
+                        title="Compartilhar dados deste mês"
+                      >
+                        <span className="material-icons text-base">share</span>
+                        <span>Compartilhar</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1164,6 +1433,15 @@ export const RepetitionChart: React.FC<Props> = ({ history }) => {
           )}
         </div>
       )}
+
+      {/* MODAL DE COMPARTILHAMENTO DA TAXA DE REPETIÇÃO */}
+      <ShareRepetitionModal
+        isOpen={shareModalData.isOpen}
+        onClose={() => setShareModalData(prev => ({ ...prev, isOpen: false }))}
+        title={shareModalData.title}
+        subtitle={shareModalData.subtitle}
+        messageText={shareModalData.messageText}
+      />
     </div>
   );
 };

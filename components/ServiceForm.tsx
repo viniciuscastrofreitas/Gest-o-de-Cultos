@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ServiceRecord, SongStats, ServiceDraft } from '../types';
+import { isGroupHeaderOrMarker } from '../utils/praiseCategories';
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3 text-center md:text-left">{children}</label>
@@ -197,6 +198,14 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
   const checkAndAddSong = (songName: string) => {
     const name = songName.trim();
     if (!name) return;
+
+    // Se for organizador de grupo (ex: GRUPO DE LOUVOR, GRUPO DE SENHORAS, GRUPO DE JOVENS),
+    // adiciona direto na lista sem checar repetição nem alertar
+    if (isGroupHeaderOrMarker(name)) {
+      executeAdd(name);
+      return;
+    }
+
     if (!fullSongList.includes(name)) onRegisterNewSong(name);
     
     const stats = songStats[name];
@@ -320,6 +329,36 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
                 <input type="text" value={inputValue} onChange={e => {setInputValue(e.target.value); setShowSuggestions(true);}} className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm text-slate-900 outline-none focus:bg-white focus:border-indigo-500 transition-all placeholder:text-slate-300" placeholder="Hino ou Nº..." />
                 <button onClick={() => checkAndAddSong(inputValue)} className="bg-indigo-600 text-white w-14 h-14 rounded-2xl flex items-center justify-center active:scale-90 shadow-lg shrink-0"><span className="material-icons text-2xl">add</span></button>
               </div>
+
+              {/* Atalhos Rápidos para Organização de Lista */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider mr-0.5">Organizar:</span>
+                <button
+                  type="button"
+                  onClick={() => checkAndAddSong('GRUPO DE LOUVOR')}
+                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-wider border border-indigo-200/60 active:scale-95 transition-all flex items-center gap-1 shadow-2xs"
+                  title="Inserir divisor Grupo de Louvor (não conta repetições)"
+                >
+                  <span className="material-icons text-xs">groups</span> + Grupo de Louvor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => checkAndAddSong('GRUPO DE SENHORAS')}
+                  className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-wider border border-rose-200/60 active:scale-95 transition-all flex items-center gap-1 shadow-2xs"
+                  title="Inserir divisor Grupo de Senhoras (não conta repetições)"
+                >
+                  <span className="material-icons text-xs">female</span> + Grupo de Senhoras
+                </button>
+                <button
+                  type="button"
+                  onClick={() => checkAndAddSong('GRUPO DE JOVENS')}
+                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-200/60 active:scale-95 transition-all flex items-center gap-1 shadow-2xs"
+                  title="Inserir divisor Grupo de Jovens (não conta repetições)"
+                >
+                  <span className="material-icons text-xs">school</span> + Grupo de Jovens
+                </button>
+              </div>
+
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute z-[250] w-[calc(100%-4rem)] md:w-[calc(100%-10rem)] bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-200 max-h-60 overflow-y-auto mt-1">
                   {suggestions.map(s => (
@@ -332,9 +371,26 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                 {draft.songs.map((s, i) => (
-                  <div key={`${s}-${i}`} draggable onDragStart={() => onDragStart(s, i)} onDragOver={(e) => onDragOver(e, i)} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-move ${draggedIndex === i ? 'opacity-30' : ''}`}>
-                    <span className="font-bold text-slate-700 text-[13px] truncate">#{i+1} {s}</span>
-                    <button onClick={() => setDraft(prev => ({...prev, songs: prev.songs.filter((_, idx) => idx !== i)}))} className="text-slate-300 hover:text-rose-500"><span className="material-icons text-lg">close</span></button>
+                  <div
+                    key={`${s}-${i}`}
+                    draggable
+                    onDragStart={() => onDragStart(s, i)}
+                    onDragOver={(e) => onDragOver(e, i)}
+                    className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-move transition-all ${
+                      draggedIndex === i ? 'opacity-30' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="material-icons text-slate-300 text-sm cursor-grab shrink-0">drag_indicator</span>
+                      <span className="font-bold text-slate-700 text-[13px] truncate">#{i + 1} {s}</span>
+                    </div>
+                    <button
+                      onClick={() => setDraft(prev => ({ ...prev, songs: prev.songs.filter((_, idx) => idx !== i) }))}
+                      className="text-slate-300 hover:text-rose-500 p-1 transition-colors shrink-0"
+                      title="Remover"
+                    >
+                      <span className="material-icons text-lg">close</span>
+                    </button>
                   </div>
                 ))}
               </div>

@@ -19,6 +19,7 @@ import { initDB, saveData, loadData, getImmediateCachedData } from './db';
 import { supabase } from './supabase';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineBanner } from './components/OfflineBanner';
+import { isGroupHeaderOrMarker } from './utils/praiseCategories';
 
 const getTodayDate = () => {
   const now = new Date();
@@ -287,6 +288,7 @@ const App: React.FC = () => {
     const stats: Record<string, SongStats> = {};
     history.forEach(record => {
       record.songs.forEach(song => {
+        if (isGroupHeaderOrMarker(song)) return;
         if (!stats[song]) stats[song] = { song, count: 0, lastDate: null, history: [] };
         stats[song].count++;
         stats[song].history.push(record.date);
@@ -548,7 +550,7 @@ const App: React.FC = () => {
         <PWAInstallButton variant="banner" />
         <OfflineBanner />
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
-          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => { setCustomSongs(prev => [...prev, s]); setPraiseCollection(prev => [...new Set([...prev, s])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))); }} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
+          {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => { if (isGroupHeaderOrMarker(s)) return; setCustomSongs(prev => [...prev, s]); setPraiseCollection(prev => [...new Set([...prev, s])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))); }} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
           {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}
           {activeTab === 'attendance' && (
             <AttendanceAnalytics
@@ -565,9 +567,24 @@ const App: React.FC = () => {
           {activeTab === 'workers' && <WorkerRanking history={history} workers={customWorkers} />}
           {activeTab === 'suggestions' && <WorkerStats history={history} workers={customWorkers} />}
           {activeTab === 'manage-workers' && <WorkerManager workers={customWorkers} setWorkers={setCustomWorkers} />}
-          {activeTab === 'collections' && <CollectionsManager praiseCollection={praiseCollection} setPraiseCollection={setPraiseCollection} onRenameSongInHistory={onRenameSongInHistory} />}
+          {activeTab === 'collections' && (
+            <CollectionsManager
+              praiseCollection={praiseCollection}
+              setPraiseCollection={setPraiseCollection}
+              onRenameSongInHistory={onRenameSongInHistory}
+              onAddSong={newSong => {
+                if (isGroupHeaderOrMarker(newSong)) return;
+                setCustomSongs(prev => prev.includes(newSong) ? prev : [...prev, newSong]);
+                setPraiseCollection(prev => [...new Set([...prev, newSong])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
+              }}
+              onDeleteSongFromCollection={songToDelete => {
+                setCustomSongs(prev => prev.filter(s => s !== songToDelete));
+                setPraiseCollection(prev => prev.filter(s => s !== songToDelete));
+              }}
+            />
+          )}
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} />}
-          {activeTab === 'repetition' && <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} />}
+          {activeTab === 'repetition' && <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} churchName={churchName} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
           {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>

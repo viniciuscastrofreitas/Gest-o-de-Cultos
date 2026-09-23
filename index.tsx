@@ -3,38 +3,63 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Registrar Service Worker para suporte Offline robusto
+// Limpeza e gestão de Service Worker para garantir atualização imediata no preview
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    // Usando caminho relativo './sw.js' para melhor compatibilidade com subdiretórios e previews
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => {
-        console.log('Service Worker pronto:', reg.scope);
-        
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
+  const isDevOrPreview = import.meta.env.DEV || 
+                        window.location.hostname.includes('run.app') || 
+                        window.location.hostname === 'localhost' ||
+                        window.self !== window.top;
 
-        reg.onupdatefound = () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('Nova versão disponível. Recarregue para atualizar.');
-              }
-            };
+  if (isDevOrPreview) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      const hadController = !!navigator.serviceWorker.controller;
+      if (registrations.length > 0) {
+        Promise.all(registrations.map(r => r.unregister())).then(() => {
+          if ('caches' in window) {
+            caches.keys().then(keys => {
+              Promise.all(keys.map(k => caches.delete(k))).then(() => {
+                if (hadController && !sessionStorage.getItem('sw_cleaned_reload')) {
+                  sessionStorage.setItem('sw_cleaned_reload', 'true');
+                  window.location.reload();
+                }
+              });
+            });
           }
-        };
-      })
-      .catch(err => {
-        // Log amigável para erro de origem comum em ambientes de preview (iFrames)
-        if (err.message.includes('origin')) {
-          console.warn('Service Worker: Registro ignorado (ambiente de pré-visualização). Isso é normal durante o desenvolvimento.');
-        } else {
-          console.error('Erro ao registrar Service Worker:', err);
-        }
-      });
-  });
+        });
+      }
+    });
+  } else {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => {
+          reg.update();
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          reg.onupdatefound = () => {
+            const installing = reg.installing;
+            if (installing) {
+              installing.onstatechange = () => {
+                if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.location.reload();
+                }
+              };
+            }
+          };
+        })
+        .catch(err => {
+          console.warn('SW register info:', err);
+        });
+    });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
+  }
 }
 
 const rootElement = document.getElementById('root');
