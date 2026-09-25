@@ -12,6 +12,7 @@ interface Props {
 
 type CategoryFilter = 'all' | 'principais' | 'cias' | 'clamor' | 'avulsos';
 type MainTab = 'ano' | 'intervalos' | 'meses';
+type SortOrder = 'number' | 'oldest_first' | 'newest_first';
 
 interface MonthlyData {
   monthKey: string;      // '2025-03'
@@ -24,9 +25,9 @@ interface MonthlyData {
   uniqueSongs: number;
   repeatedTimes: number; // totalExecutions - uniqueSongs
   repetitionRate: number; // %
-  onceSongs: string[];   // cantados só 1x
-  twiceSongs: string[];  // cantados 2x
-  manySongs: { song: string; count: number }[]; // cantados 3x ou mais
+  onceSongs: { song: string; lastDate: string }[];   // cantados só 1x
+  twiceSongs: { song: string; lastDate: string }[];  // cantados 2x
+  manySongs: { song: string; count: number; lastDate: string }[]; // cantados 3x ou mais
 }
 
 interface YearCountGroup {
@@ -54,6 +55,8 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const [selectedTimesFilter, setSelectedTimesFilter] = useState<number | 'all'>(1);
+  const [sortBy, setSortBy] = useState<SortOrder>('number');
+  const [monthSortBy, setMonthSortBy] = useState<SortOrder>('number');
   const [searchTerm, setSearchTerm] = useState('');
   const [fastSearchTerm, setFastSearchTerm] = useState('');
   const [fastIntervalFilter, setFastIntervalFilter] = useState<'all' | '7' | '15' | '30'>('all');
@@ -197,6 +200,7 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     const monthMap = new Map<string, {
       services: ServiceRecord[];
       songCounts: Record<string, number>;
+      songLastDates: Record<string, string>;
     }>();
 
     history.forEach(r => {
@@ -204,7 +208,7 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
       const key = r.date.substring(0, 7);
 
       if (!monthMap.has(key)) {
-        monthMap.set(key, { services: [], songCounts: {} });
+        monthMap.set(key, { services: [], songCounts: {}, songLastDates: {} });
       }
 
       const m = monthMap.get(key)!;
@@ -215,6 +219,9 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
         if (!matchesCategory(song, category)) return;
 
         m.songCounts[song] = (m.songCounts[song] || 0) + 1;
+        if (!m.songLastDates[song] || r.date > m.songLastDates[song]) {
+          m.songLastDates[song] = r.date;
+        }
       });
     });
 
@@ -230,18 +237,17 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
       const entry = monthMap.get(key)!;
 
       let totalExecutions = 0;
-      const onceSongs: string[] = [];
-      const twiceSongs: string[] = [];
-      const manySongs: { song: string; count: number }[] = [];
+      const onceSongs: { song: string; lastDate: string }[] = [];
+      const twiceSongs: { song: string; lastDate: string }[] = [];
+      const manySongs: { song: string; count: number; lastDate: string }[] = [];
 
       Object.entries(entry.songCounts).forEach(([song, count]) => {
         totalExecutions += count;
-        if (count === 1) onceSongs.push(song);
-        else if (count === 2) twiceSongs.push(song);
-        else manySongs.push({ song, count });
+        const lastDate = entry.songLastDates[song] || '';
+        if (count === 1) onceSongs.push({ song, lastDate });
+        else if (count === 2) twiceSongs.push({ song, lastDate });
+        else manySongs.push({ song, count, lastDate });
       });
-
-      manySongs.sort((a, b) => b.count - a.count);
 
       const uniqueSongs = Object.keys(entry.songCounts).length;
       const repeatedTimes = Math.max(0, totalExecutions - uniqueSongs);
@@ -276,6 +282,55 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     }
     return allMonthsData[allMonthsData.length - 1];
   }, [allMonthsData, selectedMonthKey]);
+
+  // Listas do mês ordenadas conforme monthSortBy
+  const displayedMonthData = useMemo(() => {
+    if (!activeMonth) return null;
+
+    const sortFn = (a: { song: string; lastDate: string }, b: { song: string; lastDate: string }) => {
+      if (monthSortBy === 'oldest_first') {
+        if (!a.lastDate && !b.lastDate) return a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = a.lastDate.localeCompare(b.lastDate);
+        if (cmp !== 0) return cmp;
+        return a.song.localeCompare(b.song, undefined, { numeric: true });
+      }
+      if (monthSortBy === 'newest_first') {
+        if (!a.lastDate && !b.lastDate) return a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = b.lastDate.localeCompare(a.lastDate);
+        if (cmp !== 0) return cmp;
+        return a.song.localeCompare(b.song, undefined, { numeric: true });
+      }
+      return a.song.localeCompare(b.song, undefined, { numeric: true });
+    };
+
+    const once = [...activeMonth.onceSongs].sort(sortFn);
+    const twice = [...activeMonth.twiceSongs].sort(sortFn);
+    const many = [...activeMonth.manySongs].sort((a, b) => {
+      if (monthSortBy === 'oldest_first') {
+        if (!a.lastDate && !b.lastDate) return b.count - a.count || a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = a.lastDate.localeCompare(b.lastDate);
+        if (cmp !== 0) return cmp;
+        return b.count - a.count || a.song.localeCompare(b.song, undefined, { numeric: true });
+      }
+      if (monthSortBy === 'newest_first') {
+        if (!a.lastDate && !b.lastDate) return b.count - a.count || a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = b.lastDate.localeCompare(a.lastDate);
+        if (cmp !== 0) return cmp;
+        return b.count - a.count || a.song.localeCompare(b.song, undefined, { numeric: true });
+      }
+      return b.count - a.count || a.song.localeCompare(b.song, undefined, { numeric: true });
+    });
+
+    return { once, twice, many };
+  }, [activeMonth, monthSortBy]);
 
   // =========================================================================
   // DADOS DO ANO SELECIONADO (TÓPICO 1)
@@ -400,7 +455,7 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     };
   }, [history, selectedYear, category]);
 
-  // Lista do grupo anual filtrado
+  // Lista do grupo anual filtrado com suporte a ordenação
   const displayedYearSongs = useMemo(() => {
     let list: { song: string; count: number; lastDate: string | null }[] = [];
     if (selectedTimesFilter === 'all') {
@@ -409,18 +464,72 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
       });
     } else {
       const g = yearlyData.countGroups.find(item => item.times === selectedTimesFilter);
-      if (g) list = g.songs;
+      if (g) list = [...g.songs];
     }
 
-    if (!searchTerm.trim()) return list;
-    const term = searchTerm.toLowerCase();
-    return list.filter(s => s.song.toLowerCase().includes(term));
-  }, [yearlyData, selectedTimesFilter, searchTerm]);
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      list = list.filter(s => s.song.toLowerCase().includes(term));
+    }
+
+    const sorted = [...list];
+    if (sortBy === 'oldest_first') {
+      sorted.sort((a, b) => {
+        if (!a.lastDate && !b.lastDate) return a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = a.lastDate.localeCompare(b.lastDate);
+        if (cmp !== 0) return cmp;
+        return a.song.localeCompare(b.song, undefined, { numeric: true });
+      });
+    } else if (sortBy === 'newest_first') {
+      sorted.sort((a, b) => {
+        if (!a.lastDate && !b.lastDate) return a.song.localeCompare(b.song, undefined, { numeric: true });
+        if (!a.lastDate) return 1;
+        if (!b.lastDate) return -1;
+        const cmp = b.lastDate.localeCompare(a.lastDate);
+        if (cmp !== 0) return cmp;
+        return a.song.localeCompare(b.song, undefined, { numeric: true });
+      });
+    } else {
+      // 'number' - por número como está
+      sorted.sort((a, b) => a.song.localeCompare(b.song, undefined, { numeric: true }));
+    }
+
+    return sorted;
+  }, [yearlyData, selectedTimesFilter, searchTerm, sortBy]);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
     const [y, m, d] = dateStr.split('-');
     return `${d}/${m}/${y}`;
+  };
+
+  const formatShortDate = (dateStr: string | null) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}/${parts[1]}`;
+  };
+
+  const getDaysAgo = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return null;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+    const target = new Date(y, m, d);
+    const now = new Date();
+    target.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+    const diffTime = now.getTime() - target.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Hoje';
+    if (diffDays === 1) return 'Ontem';
+    if (diffDays < 0) return null;
+    return `há ${diffDays} dias`;
   };
 
   const getChurchHeader = () => {
@@ -451,10 +560,17 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     const songsToShare = displayedYearSongs;
     const hasSearch = searchTerm.trim().length > 0;
 
+    const sortLabel = sortBy === 'oldest_first'
+      ? 'Cantou há mais tempo ➔ Mais recente'
+      : sortBy === 'newest_first'
+      ? 'Mais recente ➔ Cantou há mais tempo'
+      : 'Por Número do Louvor';
+
     let text = `${getChurchHeader()}\n`;
     text += `📊 *TAXA DE REPETIÇÃO - ANO ${selectedYear}*\n\n`;
     text += `🎵 *Categoria:* ${catLabel}\n`;
     text += `📌 *Filtro:* ${filterTitle}${hasSearch ? ` (Busca: "${searchTerm}")` : ''}\n`;
+    text += `🔀 *Ordenação:* ${sortLabel}\n`;
     text += `📋 *Total:* ${songsToShare.length} ${songsToShare.length === 1 ? 'louvor' : 'louvores'}\n`;
     text += `─────────────────────────\n\n`;
 
@@ -480,7 +596,7 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     setShareModalData({
       isOpen: true,
       title: `${catLabel} - ${filterTitle} (${selectedYear})`,
-      subtitle: `${songsToShare.length} louvores selecionados`,
+      subtitle: `${songsToShare.length} louvores selecionados • ${sortLabel}`,
       messageText: text,
     });
   };
@@ -586,43 +702,56 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
   const handleShareMonthData = () => {
     if (!activeMonth) return;
     const catLabel = getCategoryLabel(category);
+    const monthSortLabel = monthSortBy === 'oldest_first'
+      ? 'Cantou há mais tempo no mês ➔ Recente'
+      : monthSortBy === 'newest_first'
+      ? 'Mais recente no mês ➔ Há mais tempo'
+      : 'Por Número do Louvor';
 
     let text = `${getChurchHeader()}\n`;
     text += `📅 *TAXA DE REPETIÇÃO - ${activeMonth.fullMonth.toUpperCase()}*\n\n`;
     text += `🎵 *Categoria:* ${catLabel}\n`;
+    text += `🔀 *Ordenação:* ${monthSortLabel}\n`;
     text += `⛪ *Cultos no Mês:* ${activeMonth.servicesCount}\n`;
     text += `🎶 *Louvores Cantados:* ${activeMonth.totalExecutions}\n`;
     text += `🌟 *Hinos Únicos:* ${activeMonth.uniqueSongs}\n`;
     text += `🔁 *Repetições no Mês:* ${activeMonth.repeatedTimes}\n`;
     text += `📊 *Taxa de Repetição:* ${activeMonth.repetitionRate.toFixed(1)}%\n\n`;
 
+    const onceList = displayedMonthData?.once || activeMonth.onceSongs;
+    const twiceList = displayedMonthData?.twice || activeMonth.twiceSongs;
+    const manyList = displayedMonthData?.many || activeMonth.manySongs;
+
     text += `─────────────────────────\n`;
-    text += `1️⃣ *CANTADOS APENAS 1 VEZ (${activeMonth.onceSongs.length}):*\n`;
-    if (activeMonth.onceSongs.length === 0) {
+    text += `1️⃣ *CANTADOS APENAS 1 VEZ (${onceList.length}):*\n`;
+    if (onceList.length === 0) {
       text += `Nenhum\n`;
     } else {
-      activeMonth.onceSongs.forEach((s, idx) => {
-        text += `${idx + 1}. ${s}\n`;
+      onceList.forEach((s, idx) => {
+        const dStr = s.lastDate ? ` (${formatDate(s.lastDate)})` : '';
+        text += `${idx + 1}. ${s.song}${dStr}\n`;
       });
     }
 
     text += `\n─────────────────────────\n`;
-    text += `2️⃣ *CANTADOS 2 VEZES (${activeMonth.twiceSongs.length}):*\n`;
-    if (activeMonth.twiceSongs.length === 0) {
+    text += `2️⃣ *CANTADOS 2 VEZES (${twiceList.length}):*\n`;
+    if (twiceList.length === 0) {
       text += `Nenhum\n`;
     } else {
-      activeMonth.twiceSongs.forEach((s, idx) => {
-        text += `${idx + 1}. ${s}\n`;
+      twiceList.forEach((s, idx) => {
+        const dStr = s.lastDate ? ` (Último: ${formatDate(s.lastDate)})` : '';
+        text += `${idx + 1}. ${s.song}${dStr}\n`;
       });
     }
 
     text += `\n─────────────────────────\n`;
-    text += `🔥 *CANTADOS 3X OU MAIS (${activeMonth.manySongs.length}):*\n`;
-    if (activeMonth.manySongs.length === 0) {
+    text += `🔥 *CANTADOS 3X OU MAIS (${manyList.length}):*\n`;
+    if (manyList.length === 0) {
       text += `Nenhum\n`;
     } else {
-      activeMonth.manySongs.forEach((item, idx) => {
-        text += `${idx + 1}. ${item.song} — ${item.count}x\n`;
+      manyList.forEach((item, idx) => {
+        const dStr = item.lastDate ? ` (Último: ${formatDate(item.lastDate)})` : '';
+        text += `${idx + 1}. ${item.song} — ${item.count}x${dStr}\n`;
       });
     }
 
@@ -632,7 +761,7 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
     setShareModalData({
       isOpen: true,
       title: `Taxa de Repetição - ${activeMonth.fullMonth}`,
-      subtitle: `${catLabel} • ${activeMonth.repetitionRate.toFixed(1)}% repetição`,
+      subtitle: `${catLabel} • ${activeMonth.repetitionRate.toFixed(1)}% repetição • ${monthSortLabel}`,
       messageText: text,
     });
   };
@@ -842,8 +971,34 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
             Toque nos blocos abaixo para ver os hinos de cada frequência:
           </p>
 
-          {/* CARTÕES DE FREQUÊNCIA (1x, 2x, 3x, 4x, 5x, 6x+) */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          {/* CARTÕES DE FREQUÊNCIA (Todos, 1x, 2x, 3x, 4x, 5x, 6x+) */}
+          <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+            {/* Card "Todos" */}
+            <button
+              onClick={() => setSelectedTimesFilter('all')}
+              className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all active:scale-95 flex flex-col justify-between ${
+                selectedTimesFilter === 'all'
+                  ? 'bg-white border-slate-900 ring-2 ring-slate-900 shadow-sm'
+                  : 'bg-slate-50 border-slate-200/80 hover:bg-white'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full mb-1">
+                <span className="w-2 h-2 rounded-full bg-slate-800 shrink-0" />
+                <span className="text-[8px] font-black text-slate-500 uppercase">Todos</span>
+              </div>
+              <div>
+                <h5 className="text-[10px] font-black text-slate-800 uppercase tracking-tight truncate">
+                  Todos
+                </h5>
+                <p className="text-base sm:text-xl font-black text-slate-900 tracking-tight leading-none mt-0.5">
+                  {yearlyData.uniqueCount}
+                </p>
+              </div>
+              <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider block mt-1 truncate">
+                100% cantados
+              </span>
+            </button>
+
             {yearlyData.countGroups.map(g => {
               const isSelected = selectedTimesFilter === g.times;
               return (
@@ -914,32 +1069,110 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
               </div>
             </div>
 
+            {/* Barra de Ordenação */}
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <span className="material-icons text-sm text-indigo-600">sort</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">
+                  Ordenar:
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1 overflow-x-auto max-w-full scrollbar-none py-0.5">
+                <button
+                  onClick={() => setSortBy('number')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                    sortBy === 'number'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  title="Ordenar por número do hino (como está)"
+                >
+                  <span className="material-icons text-[12px]">tag</span>
+                  <span>Por Número</span>
+                </button>
+
+                <button
+                  onClick={() => setSortBy('oldest_first')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                    sortBy === 'oldest_first'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  title="Do que cantou há mais tempo para o mais recente"
+                >
+                  <span className="material-icons text-[12px]">history</span>
+                  <span>Cantou há mais tempo ➔ Recente</span>
+                </button>
+
+                <button
+                  onClick={() => setSortBy('newest_first')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                    sortBy === 'newest_first'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  title="Do mais recente para o que cantou há mais tempo"
+                >
+                  <span className="material-icons text-[12px]">schedule</span>
+                  <span>Mais recente ➔ Há mais tempo</span>
+                </button>
+              </div>
+            </div>
+
             {displayedYearSongs.length === 0 ? (
-              <div className="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-wider">
+              <div className="text-center py-8 text-slate-400 font-bold text-xs uppercase tracking-wider">
                 Nenhum louvor encontrado
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-0.5 custom-scrollbar">
-                {displayedYearSongs.map(item => (
-                  <div
-                    key={item.song}
-                    className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-100 shadow-2xs gap-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight truncate block">
-                        {item.song}
-                      </span>
-                      {item.lastDate && (
-                        <span className="text-[8px] font-semibold text-slate-400 block mt-0.5">
-                          Último: {formatDate(item.lastDate)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-0.5 custom-scrollbar">
+                {displayedYearSongs.map(item => {
+                  const daysAgo = getDaysAgo(item.lastDate);
+                  return (
+                    <div
+                      key={item.song}
+                      className={`p-2.5 bg-white rounded-xl border transition-all shadow-2xs flex items-center justify-between gap-2.5 ${
+                        sortBy === 'oldest_first'
+                          ? 'border-amber-100 hover:border-amber-300'
+                          : sortBy === 'newest_first'
+                          ? 'border-indigo-100 hover:border-indigo-300'
+                          : 'border-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight truncate block">
+                          {item.song}
                         </span>
-                      )}
+                        {item.lastDate && (
+                          <div className="flex items-center gap-1.5 text-[8.5px] font-semibold text-slate-500 mt-0.5 flex-wrap">
+                            <span className="flex items-center gap-0.5 text-slate-400">
+                              <span className="material-icons text-[11px]">event</span>
+                              <span>Último:</span>
+                            </span>
+                            <strong className="text-slate-700">{formatDate(item.lastDate)}</strong>
+                            {daysAgo && (
+                              <span className={`px-1.5 py-0.2 rounded-md font-bold text-[8px] border ${
+                                sortBy === 'oldest_first'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : sortBy === 'newest_first'
+                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
+                                {daysAgo}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
+                          {item.count}x
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 shrink-0">
-                      {item.count}x
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1346,6 +1579,57 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
                     </div>
                   </div>
 
+                  {/* Barra de Ordenação do Mês */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span className="material-icons text-sm text-indigo-600">sort</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">
+                        Ordenar no Mês:
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 overflow-x-auto max-w-full scrollbar-none py-0.5">
+                      <button
+                        onClick={() => setMonthSortBy('number')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                          monthSortBy === 'number'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                        title="Ordenar por número do hino"
+                      >
+                        <span className="material-icons text-[12px]">tag</span>
+                        <span>Por Número</span>
+                      </button>
+
+                      <button
+                        onClick={() => setMonthSortBy('oldest_first')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                          monthSortBy === 'oldest_first'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                        title="Do que cantou há mais tempo no mês para o mais recente"
+                      >
+                        <span className="material-icons text-[12px]">history</span>
+                        <span>Cantou há mais tempo ➔ Recente</span>
+                      </button>
+
+                      <button
+                        onClick={() => setMonthSortBy('newest_first')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 ${
+                          monthSortBy === 'newest_first'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                        title="Do mais recente no mês para o que cantou há mais tempo"
+                      >
+                        <span className="material-icons text-[12px]">schedule</span>
+                        <span>Mais recente ➔ Há mais tempo</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* 3 BLOCOS DO MÊS: CANTADOS 1X, 2X E 3X OU MAIS */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* 1. Cantados 1x no mês */}
@@ -1363,11 +1647,20 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
                       </div>
 
                       <div className="max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
-                        {activeMonth.onceSongs.map(song => (
-                          <div key={song} className="text-[11px] font-bold text-slate-800 bg-white p-2 rounded-lg border border-emerald-100 shadow-2xs truncate">
-                            {song}
-                          </div>
-                        ))}
+                        {displayedMonthData?.once.length === 0 ? (
+                          <p className="text-[11px] text-slate-400 italic text-center py-4">Nenhum hino</p>
+                        ) : (
+                          displayedMonthData?.once.map(item => (
+                            <div key={item.song} className="text-[11px] font-bold text-slate-800 bg-white p-2 rounded-lg border border-emerald-100 shadow-2xs flex items-center justify-between gap-1">
+                              <span className="truncate flex-1">{item.song}</span>
+                              {item.lastDate && (
+                                <span className="text-[8px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0">
+                                  {formatShortDate(item.lastDate)}
+                                </span>
+                              )}
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 
@@ -1386,12 +1679,17 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
                       </div>
 
                       <div className="max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
-                        {activeMonth.twiceSongs.length === 0 ? (
+                        {displayedMonthData?.twice.length === 0 ? (
                           <p className="text-[11px] text-slate-400 italic text-center py-4">Nenhum hino</p>
                         ) : (
-                          activeMonth.twiceSongs.map(song => (
-                            <div key={song} className="text-[11px] font-bold text-slate-800 bg-white p-2 rounded-lg border border-sky-100 shadow-2xs flex items-center justify-between gap-1">
-                              <span className="truncate flex-1">{song}</span>
+                          displayedMonthData?.twice.map(item => (
+                            <div key={item.song} className="text-[11px] font-bold text-slate-800 bg-white p-2 rounded-lg border border-sky-100 shadow-2xs flex items-center justify-between gap-1">
+                              <span className="truncate flex-1">{item.song}</span>
+                              {item.lastDate && (
+                                <span className="text-[8px] font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded shrink-0">
+                                  {formatShortDate(item.lastDate)}
+                                </span>
+                              )}
                               <span className="text-[8px] font-black text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded shrink-0">2x</span>
                             </div>
                           ))
@@ -1414,12 +1712,17 @@ export const RepetitionChart: React.FC<Props> = ({ history, churchName }) => {
                       </div>
 
                       <div className="max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar pr-0.5">
-                        {activeMonth.manySongs.length === 0 ? (
+                        {displayedMonthData?.many.length === 0 ? (
                           <p className="text-[11px] text-slate-400 italic text-center py-4">Nenhum hino</p>
                         ) : (
-                          activeMonth.manySongs.map(item => (
+                          displayedMonthData?.many.map(item => (
                             <div key={item.song} className="text-[11px] font-bold text-slate-800 bg-white p-2 rounded-lg border border-rose-100 shadow-2xs flex items-center justify-between gap-1">
                               <span className="truncate flex-1">{item.song}</span>
+                              {item.lastDate && (
+                                <span className="text-[8px] font-semibold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded shrink-0">
+                                  {formatShortDate(item.lastDate)}
+                                </span>
+                              )}
                               <span className="text-[8px] font-black text-white bg-rose-500 px-1.5 py-0.5 rounded shrink-0">{item.count}x</span>
                             </div>
                           ))
