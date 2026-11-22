@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ServiceRecord, SongStats, ServiceDraft } from '../types';
 import { isGroupHeaderOrMarker } from '../utils/praiseCategories';
+import { DAY_NAMES_SHORT, DAY_NAMES_FULL, parseLocalDate, normalizeServiceDescription } from '../utils/dateUtils';
 
 const Label = ({ children }: { children?: React.ReactNode }) => (
   <label className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-3 text-center md:text-left">{children}</label>
@@ -46,11 +47,11 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
   // Estado interno para múltiplos obreiros no portão
   const [selectedGateWorkers, setSelectedGateWorkers] = useState<SelectedGateWorker[]>([]);
 
-  const dayOfWeekNames = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-  const fullDayNames = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
+  const dayOfWeekNames = DAY_NAMES_SHORT;
+  const fullDayNames = DAY_NAMES_FULL;
 
   const dateInfo = useMemo(() => {
-    const d = new Date(draft.date + 'T12:00:00');
+    const d = parseLocalDate(draft.date) || new Date();
     const dayIndex = d.getDay();
     let specialName = null;
     let specialColor = '';
@@ -116,9 +117,11 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
   }, [draft.roles.gate, editingId]);
 
   useEffect(() => {
-    if (!dateInfo.isSunday && !editingId) setDraft(prev => ({ ...prev, description: dateInfo.fullName }));
-    else if (dateInfo.isSunday && !editingId && !['EBD', 'DOM'].includes(draft.description)) setDraft(prev => ({ ...prev, description: 'DOM' }));
-  }, [dateInfo, editingId]);
+    const expectedDesc = normalizeServiceDescription(draft.date, draft.description);
+    if (expectedDesc && expectedDesc !== draft.description) {
+      setDraft(prev => ({ ...prev, description: expectedDesc }));
+    }
+  }, [draft.date, draft.description, editingId]);
 
   const updateRole = (role: keyof typeof draft.roles, name: string) => {
     setDraft(prev => ({ ...prev, roles: { ...prev.roles, [role]: name } }));
@@ -179,17 +182,22 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
 
   const handleShareHinosOnly = () => {
     if (draft.songs.length === 0) return;
-    const d = new Date(draft.date + 'T12:00:00');
-    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const d = parseLocalDate(draft.date);
+    const dateStr = d
+      ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+      : draft.date;
     const text = `🎶 *LISTA DE LOUVORES - ${dateStr}*\n\n` + 
       draft.songs.map((s, i) => `${i + 1}. ${s}`).join('\n');
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
   };
 
   const handleSave = () => {
-    let finalDraft = { ...draft };
+    const finalDraft: ServiceDraft = {
+      ...draft,
+      description: normalizeServiceDescription(draft.date, draft.description),
+    };
     if (dateInfo.isThursday) {
-      finalDraft.roles.word = finalDraft.roles.praise;
+      finalDraft.roles = { ...finalDraft.roles, word: finalDraft.roles.praise };
     }
     onSave(finalDraft);
     setShowSuccessModal(true);
@@ -212,9 +220,11 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
     if (stats && stats.count > 0) {
       let diffDays: number | null = null;
       if (stats.lastDate) {
-        const lastDate = new Date(stats.lastDate + 'T12:00:00');
-        const today = new Date(); today.setHours(12, 0, 0, 0);
-        diffDays = Math.ceil(Math.abs(today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        const lastDate = parseLocalDate(stats.lastDate);
+        if (lastDate) {
+          const today = new Date(); today.setHours(12, 0, 0, 0);
+          diffDays = Math.ceil(Math.abs(today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        }
       }
       
       setPendingSong({ 
@@ -295,7 +305,19 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
               <div className="flex flex-col">
                 <Label>Data do Culto</Label>
                 <FormInput className="w-full">
-                  <input type="date" value={draft.date} onChange={(e) => setDraft(prev => ({ ...prev, date: e.target.value }))} className="w-full bg-transparent font-black text-lg text-slate-900 text-center outline-none py-2" />
+                  <input
+                    type="date"
+                    value={draft.date}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setDraft(prev => ({
+                        ...prev,
+                        date: newDate,
+                        description: newDate ? normalizeServiceDescription(newDate, prev.description) : prev.description,
+                      }));
+                    }}
+                    className="w-full bg-transparent font-black text-lg text-slate-900 text-center outline-none py-2"
+                  />
                 </FormInput>
                 <div className="mt-3 flex flex-wrap gap-2 justify-center">
                   <div className="bg-indigo-50 px-4 py-1.5 rounded-full border border-indigo-100">
@@ -600,8 +622,10 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Histórico de Datas</p>
                   <div className="grid grid-cols-2 gap-2">
                     {pendingSong.history.slice(0, 6).map((date, idx) => {
-                      const d = new Date(date + 'T12:00:00');
-                      const formatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                      const d = parseLocalDate(date);
+                      const formatted = d
+                        ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+                        : date;
                       return (
                         <div key={idx} className="bg-white px-3 py-2 rounded-xl border border-slate-100 text-[11px] font-bold text-slate-600">
                           {formatted}

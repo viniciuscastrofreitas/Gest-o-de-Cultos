@@ -20,6 +20,18 @@ import { supabase } from './supabase';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineBanner } from './components/OfflineBanner';
 import { isGroupHeaderOrMarker } from './utils/praiseCategories';
+import { parseLocalDate, toLocalDateString, normalizeServiceDescription } from './utils/dateUtils';
+
+const normalizeHistoryRecords = (records: ServiceRecord[]): ServiceRecord[] => {
+  return records.map(r => {
+    const cleanDate = toLocalDateString(r.date);
+    return {
+      ...r,
+      date: cleanDate,
+      description: normalizeServiceDescription(cleanDate, r.description),
+    };
+  });
+};
 
 const getTodayDate = () => {
   const now = new Date();
@@ -27,7 +39,8 @@ const getTodayDate = () => {
 };
 
 const getSpecialServiceInfo = (dateString: string) => {
-  const d = new Date(dateString + 'T12:00:00');
+  const d = parseLocalDate(dateString);
+  if (!d) return null;
   const day = d.getDay();
   if (day === 1) return { name: 'Glorificação', color: 'text-indigo-400' };
   if (day === 3) return { name: 'Senhoras', color: 'text-rose-400' };
@@ -40,7 +53,7 @@ const App: React.FC = () => {
   const cachedInitial = getImmediateCachedData();
 
   const [activeTab, setActiveTab] = useState<'new' | 'history' | 'attendance' | 'unplayed' | 'learning' | 'praise-ranking' | 'repetition' | 'workers' | 'suggestions' | 'manage-workers' | 'collections' | 'settings'>('new');
-  const [history, setHistory] = useState<ServiceRecord[]>(() => cachedInitial?.history || []);
+  const [history, setHistory] = useState<ServiceRecord[]>(() => normalizeHistoryRecords(cachedInitial?.history || []));
   const [churchName, setChurchName] = useState<string>(() => {
     const cached = cachedInitial?.churchName;
     if (!cached || cached === 'Clique aqui para nomear sua igreja') {
@@ -78,12 +91,17 @@ const App: React.FC = () => {
   const emptyRoles = { gate: '', praise: '', word: '', scripture: '' };
 
   const [draft, setDraft] = useState<ServiceDraft>(() => {
+    const today = getTodayDate();
     if (cachedInitial?.draft) {
-      return { ...cachedInitial.draft, date: getTodayDate() };
+      return {
+        ...cachedInitial.draft,
+        date: today,
+        description: normalizeServiceDescription(today, cachedInitial.draft.description),
+      };
     }
     return {
-      date: getTodayDate(),
-      description: '',
+      date: today,
+      description: normalizeServiceDescription(today, ''),
       songs: [],
       roles: { ...emptyRoles },
       attendance: {}
@@ -114,7 +132,8 @@ const App: React.FC = () => {
         if (!lastCloudUpdateRef.current || new Date(cloudTimestamp) > new Date(lastCloudUpdateRef.current)) {
           lastCloudUpdateRef.current = cloudTimestamp;
           const remote = data.json_data;
-          if (remote.history) setHistory(remote.history);
+          const normalizedRemoteHistory = remote.history ? normalizeHistoryRecords(remote.history) : undefined;
+          if (normalizedRemoteHistory) setHistory(normalizedRemoteHistory);
           if (remote.churchName) {
             setChurchName(remote.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : remote.churchName);
           }
@@ -124,7 +143,7 @@ const App: React.FC = () => {
           if (remote.praiseCollection) setPraiseCollection(remote.praiseCollection);
 
           // Salva imediatamente no armazenamento local do aparelho
-          saveData(remote);
+          saveData(normalizedRemoteHistory ? { ...remote, history: normalizedRemoteHistory } : remote);
         }
       }
       setSyncStatus('synced');
@@ -204,7 +223,7 @@ const App: React.FC = () => {
         const data = await loadData();
         
         if (data) {
-          if (data.history && data.history.length > 0) setHistory(data.history);
+          if (data.history && data.history.length > 0) setHistory(normalizeHistoryRecords(data.history));
           if (data.churchName) {
             setChurchName(data.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : data.churchName);
           }
@@ -214,7 +233,14 @@ const App: React.FC = () => {
           if (data.praiseCollection && data.praiseCollection.length > 0) {
             setPraiseCollection(data.praiseCollection);
           }
-          if (data.draft) setDraft({ ...data.draft, date: getTodayDate() });
+          if (data.draft) {
+            const today = getTodayDate();
+            setDraft({
+              ...data.draft,
+              date: today,
+              description: normalizeServiceDescription(today, data.draft.description),
+            });
+          }
         }
       } catch (e) {
         console.warn("Aviso ao carregar DB local:", e);
@@ -302,23 +328,38 @@ const App: React.FC = () => {
   }, [history]);
 
   const saveRecord = (data: Omit<ServiceRecord, 'id'>) => {
+    const cleanDate = toLocalDateString(data.date);
+    const normalizedRecord: Omit<ServiceRecord, 'id'> = {
+      ...data,
+      date: cleanDate,
+      description: normalizeServiceDescription(cleanDate, data.description),
+    };
     if (editingId) {
-      setHistory(prev => prev.map(r => r.id === editingId ? { ...data, id: editingId } : r));
+      setHistory(prev => prev.map(r => r.id === editingId ? { ...normalizedRecord, id: editingId } : r));
       setEditingId(null);
     } else {
-      setHistory(prev => [{ ...data, id: crypto.randomUUID() }, ...prev]);
+      setHistory(prev => [{ ...normalizedRecord, id: crypto.randomUUID() }, ...prev]);
     }
-    setDraft({ date: getTodayDate(), description: '', songs: [], roles: { ...emptyRoles }, attendance: {} });
+    const today = getTodayDate();
+    setDraft({
+      date: today,
+      description: normalizeServiceDescription(today, ''),
+      songs: [],
+      roles: { ...emptyRoles },
+      attendance: {}
+    });
   };
 
   const handleRegisterGap = (date: string, type: 'missing_service' | 'missing_ebd' | 'missing_dom') => {
     setEditingId(null);
+    const cleanDate = toLocalDateString(date);
     let initialDescription = '';
     if (type === 'missing_ebd') initialDescription = 'EBD';
     else if (type === 'missing_dom') initialDescription = 'DOM';
+    else initialDescription = normalizeServiceDescription(cleanDate, '');
     
     setDraft({
-      date,
+      date: cleanDate,
       description: initialDescription,
       songs: [],
       roles: { ...emptyRoles },
@@ -586,7 +627,7 @@ const App: React.FC = () => {
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} />}
           {activeTab === 'repetition' && <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} churchName={churchName} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
-          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(h); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
+          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(normalizeHistoryRecords(h)); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
         </div>
       </main>
     </div>

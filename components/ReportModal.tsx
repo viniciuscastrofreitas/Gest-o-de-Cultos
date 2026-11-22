@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ServiceRecord } from '../types';
+import { DAY_NAMES_SHORT, parseLocalDate, normalizeServiceDescription } from '../utils/dateUtils';
 
 interface Props {
   record?: ServiceRecord | null;
@@ -14,7 +15,7 @@ export const ReportModal: React.FC<Props> = ({
   records,
   title = 'Relatório de Culto',
   onClose,
-  dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
+  dayOfWeekNamesShort = [...DAY_NAMES_SHORT]
 }) => {
   const [activeFormat, setActiveFormat] = useState<'whatsapp' | 'pdf' | 'card'>('whatsapp');
   const [copied, setCopied] = useState(false);
@@ -28,20 +29,21 @@ export const ReportModal: React.FC<Props> = ({
 
   // Format date helper
   const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
+    const d = parseLocalDate(dateStr);
+    if (!d) return dateStr;
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
   };
 
   // Generate WhatsApp text for one or multiple records
   const generateWhatsAppText = () => {
     return activeRecords.map(r => {
-      const d = new Date(r.date + 'T12:00:00');
+      const d = parseLocalDate(r.date);
       const dateFormatted = formatDate(r.date);
-      const dayName = dayOfWeekNamesShort[d.getDay()] || '';
+      const dayName = d ? (dayOfWeekNamesShort[d.getDay()] || '') : '';
+      const desc = normalizeServiceDescription(r.date, r.description);
 
       let text = `*🏛️ IGREJA CRISTÃ MARANATA*\n`;
-      text += `*RELATÓRIO DE CULTO - ${dateFormatted} (${dayName} - ${r.description})*\n\n`;
+      text += `*RELATÓRIO DE CULTO - ${dateFormatted} (${dayName} - ${desc})*\n\n`;
 
       text += `*ESCALA DE OBREIROS:*\n`;
       if (r.roles.gate) text += `🚪 *Portão:* ${r.roles.gate}\n`;
@@ -152,7 +154,7 @@ export const ReportModal: React.FC<Props> = ({
 
     ctx.fillStyle = '#818cf8';
     ctx.font = 'bold 30px Outfit, sans-serif';
-    ctx.fillText(currentRecord.description.toUpperCase(), width / 2, 230);
+    ctx.fillText(normalizeServiceDescription(currentRecord.date, currentRecord.description).toUpperCase(), width / 2, 230);
 
     // Decorative line
     ctx.strokeStyle = '#4338ca';
@@ -311,8 +313,8 @@ export const ReportModal: React.FC<Props> = ({
                 {title}
               </h2>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
-                {isSingle 
-                  ? `${currentRecord?.description} • ${formatDate(currentRecord?.date || '')}`
+                {isSingle && currentRecord
+                  ? `${normalizeServiceDescription(currentRecord.date, currentRecord.description)} • ${formatDate(currentRecord.date)}`
                   : `${activeRecords.length} cultos selecionados`}
               </p>
             </div>
@@ -441,13 +443,14 @@ export const ReportModal: React.FC<Props> = ({
 
                 {/* Services in document */}
                 {activeRecords.map((r, idx) => {
-                  const d = new Date(r.date + 'T12:00:00');
+                  const d = parseLocalDate(r.date);
                   const dateFormatted = formatDate(r.date);
-                  const dayName = dayOfWeekNamesShort[d.getDay()] || '';
+                  const dayName = d ? (dayOfWeekNamesShort[d.getDay()] || '') : '';
+                  const desc = normalizeServiceDescription(r.date, r.description);
 
                   let attTotal = 0;
                   if (r.attendance) {
-                    if (r.description === 'EBD') {
+                    if (desc === 'EBD') {
                       attTotal = (r.attendance.ebdMembersAdult || 0) + (r.attendance.ebdMembersCias || 0) +
                                  (r.attendance.ebdVisitorsAdult || 0) + (r.attendance.ebdVisitorsCias || 0);
                     } else {
@@ -465,7 +468,7 @@ export const ReportModal: React.FC<Props> = ({
                         </div>
                         <div>
                           <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Culto</span>
-                          <span className="text-sm font-black text-indigo-700">{r.description}</span>
+                          <span className="text-sm font-black text-indigo-700">{desc}</span>
                         </div>
                         <div>
                           <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Frequência Total</span>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { ServiceRecord, ServiceAttendance } from '../types';
+import { parseLocalDate, normalizeServiceDescription } from '../utils/dateUtils';
 
 interface Props {
   history: ServiceRecord[];
@@ -443,21 +444,16 @@ const AttendanceAnalytics: React.FC<Props> = ({ history, onUpdateHistory, onSele
               dateStr = `${y}-${m}-${d}`;
             }
           } else if (typeof rawDate === 'number') {
-            // Excel serial date number
+            // Excel serial date number (sem deslocamento de fuso horário)
             const dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+            dateStr = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')}`;
           }
 
           if (!dateStr) return;
 
           // Descrição do culto
           const rawDesc = String(row['Tipo do Culto'] || row['Tipo'] || row['Descrição'] || row['Culto'] || '').trim();
-          let description = rawDesc;
-          if (!description) {
-            const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
-            const days = ['DOM', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
-            description = days[dayOfWeek];
-          }
+          const description = normalizeServiceDescription(dateStr, rawDesc);
 
           const isEBD = description.toUpperCase().includes('EBD');
 
@@ -520,7 +516,7 @@ const AttendanceAnalytics: React.FC<Props> = ({ history, onUpdateHistory, onSele
         });
 
         // Ordena histórico por data decrescente
-        historyCopy.sort((a, b) => new Date(b.date + 'T12:00:00').getTime() - new Date(a.date + 'T12:00:00').getTime());
+        historyCopy.sort((a, b) => (parseLocalDate(b.date)?.getTime() || 0) - (parseLocalDate(a.date)?.getTime() || 0));
         
         onUpdateHistory(historyCopy);
         setImportNotification({

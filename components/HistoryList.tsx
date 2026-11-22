@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ServiceRecord } from '../types';
 import { ReportModal } from './ReportModal';
+import { DAY_NAMES_SHORT, parseLocalDate, normalizeServiceDescription } from '../utils/dateUtils';
 
 interface Props {
   history: ServiceRecord[];
@@ -69,7 +70,7 @@ const HistoryList: React.FC<Props> = ({
   const [selectedReportBatch, setSelectedReportBatch] = useState<{ title: string; records: ServiceRecord[] } | null>(null);
 
   const monthNames = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
-  const dayOfWeekNamesShort = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+  const dayOfWeekNamesShort = [...DAY_NAMES_SHORT];
 
   const clearAllFilters = () => {
     setSearchTerm('');
@@ -81,7 +82,8 @@ const HistoryList: React.FC<Props> = ({
   };
 
   const getSpecialBadge = (dateString: string) => {
-    const d = new Date(dateString + 'T12:00:00');
+    const d = parseLocalDate(dateString);
+    if (!d) return null;
     const day = d.getDay();
     if (day === 1) return { 
       label: 'Glorificação', 
@@ -122,9 +124,10 @@ const HistoryList: React.FC<Props> = ({
       const lowerSearch = searchTerm.toLowerCase();
       filtered = filtered.filter(r => {
         const badge = getSpecialBadge(r.date);
+        const normalizedDesc = normalizeServiceDescription(r.date, r.description);
         return (
           r.date.includes(lowerSearch) ||
-          r.description.toLowerCase().includes(lowerSearch) ||
+          normalizedDesc.toLowerCase().includes(lowerSearch) ||
           badge?.label.toLowerCase().includes(lowerSearch) ||
           Object.values(r.roles).some(v => String(v).toLowerCase().includes(lowerSearch)) ||
           r.songs.some(s => s.toLowerCase().includes(lowerSearch))
@@ -151,13 +154,18 @@ const HistoryList: React.FC<Props> = ({
     }
 
     if (filterType) {
-      filtered = filtered.filter(r => r.description === filterType);
+      filtered = filtered.filter(r => {
+        const normalizedDesc = normalizeServiceDescription(r.date, r.description);
+        if (filterType === 'DOM') return normalizedDesc === 'DOM' || normalizedDesc === 'DOMINGO';
+        return normalizedDesc === filterType;
+      });
     }
 
     filtered.sort((a, b) => b.date.localeCompare(a.date));
     const groups: Record<string, ServiceRecord[]> = {};
     filtered.forEach(record => {
-      const date = new Date(record.date + 'T12:00:00');
+      const date = parseLocalDate(record.date);
+      if (!date) return;
       const key = `${monthNames[date.getMonth()]} / ${date.getFullYear()}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(record);
@@ -266,10 +274,11 @@ const HistoryList: React.FC<Props> = ({
   }, [history, ignoredGaps]);
 
   const generateSingleReport = (r: ServiceRecord) => {
-    const d = new Date(r.date + 'T12:00:00');
+    const d = parseLocalDate(r.date) || new Date();
     const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const displayDesc = normalizeServiceDescription(r.date, r.description);
     const badge = getSpecialBadge(r.date);
-    let text = `*RELATÓRIO DE CULTO - ${dateStr} (${r.description})*\n`;
+    let text = `*RELATÓRIO DE CULTO - ${dateStr} (${displayDesc})*\n`;
     if (badge) text = `*RELATÓRIO DE CULTO (${badge.label.toUpperCase()}) - ${dateStr}*\n`;
     
     if (r.roles.gate) text += `> Portão: ${r.roles.gate}\n`;
@@ -503,10 +512,12 @@ const HistoryList: React.FC<Props> = ({
                 <div className="grid gap-5">
                   {records.map(record => {
                     const badge = getSpecialBadge(record.date);
+                    const parsedDate = parseLocalDate(record.date);
+                    const displayDesc = normalizeServiceDescription(record.date, record.description);
                     const att = record.attendance;
                     let attendanceText = "";
                     if (att) {
-                      if (record.description === 'EBD') {
+                      if (displayDesc === 'EBD') {
                         const total = (att.ebdMembersAdult || 0) + (att.ebdMembersCias || 0) + (att.ebdVisitorsAdult || 0) + (att.ebdVisitorsCias || 0);
                         if (total > 0) attendanceText = `${total} presentes`;
                       } else {
@@ -522,14 +533,14 @@ const HistoryList: React.FC<Props> = ({
                             <div className="flex items-center gap-5">
                               <div className="w-14 h-14 bg-slate-50 rounded-2xl flex flex-col items-center justify-center border border-slate-100 shrink-0">
                                 <span className="text-sm font-black text-indigo-600 leading-none">
-                                  {new Date(record.date + 'T12:00:00').getDate()}
+                                  {parsedDate ? parsedDate.getDate() : '--'}
                                 </span>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase">
-                                  {dayOfWeekNamesShort[new Date(record.date + 'T12:00:00').getDay()]}
+                                  {parsedDate ? dayOfWeekNamesShort[parsedDate.getDay()] : ''}
                                 </span>
                               </div>
                               <div className="min-w-0 flex-1">
-                                <h4 className="font-black text-slate-900 uppercase text-base tracking-tight">{record.description}</h4>
+                                <h4 className="font-black text-slate-900 uppercase text-base tracking-tight">{displayDesc}</h4>
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                                   <div className="flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -655,7 +666,10 @@ const HistoryList: React.FC<Props> = ({
                         <div className="w-12 h-12 bg-amber-500/10 text-amber-600 rounded-xl flex flex-col items-center justify-center font-black text-xs font-mono shrink-0 border border-amber-500/20">
                           <span className="text-[14px] leading-tight font-black">{gap.date.split('-')[2]}</span>
                           <span className="text-[7.5px] leading-none uppercase font-black opacity-85">
-                            {monthNames[new Date(gap.date + 'T12:00:00').getMonth()].substring(0, 3)}
+                            {(() => {
+                              const gapDate = parseLocalDate(gap.date);
+                              return gapDate ? monthNames[gapDate.getMonth()].substring(0, 3) : '';
+                            })()}
                           </span>
                         </div>
                         <div className="min-w-0">
@@ -720,8 +734,9 @@ const HistoryList: React.FC<Props> = ({
                 <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                   {alertsAndGaps.recordCompleteness.map((item, idx) => {
                     const r = item.record;
-                    const d = new Date(r.date + 'T12:00:00');
+                    const d = parseLocalDate(r.date) || new Date();
                     const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                    const displayDesc = normalizeServiceDescription(r.date, r.description);
                     return (
                       <div key={r.id || idx} className="bg-rose-50/20 border border-rose-100 rounded-[2rem] p-6 flex flex-col gap-4 shadow-sm animate-scaleUp">
                         <div className="flex items-center justify-between">
@@ -731,7 +746,7 @@ const HistoryList: React.FC<Props> = ({
                               <span className="text-[7px] font-black text-slate-400 uppercase">{dayOfWeekNamesShort[d.getDay()]}</span>
                             </div>
                             <div>
-                              <h4 className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-tight">{r.description}</h4>
+                              <h4 className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-tight">{displayDesc}</h4>
                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{dateStr}</p>
                             </div>
                           </div>
