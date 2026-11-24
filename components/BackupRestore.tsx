@@ -8,14 +8,28 @@ interface Props {
   customSongs: string[];
   learningList: PraiseLearningItem[];
   praiseCollection: string[];
+  pendingCloudSync?: boolean;
+  syncStatus?: 'synced' | 'syncing' | 'local' | 'error';
   onRestore: (history: ServiceRecord[], customSongs: string[], learningList: PraiseLearningItem[], praiseCollection: string[]) => void;
-  onForceSync: () => void;
+  onForceSync: () => Promise<boolean> | void;
+  onGuaranteeLocalSave: () => Promise<boolean> | boolean;
 }
 
-const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, praiseCollection, onRestore, onForceSync }) => {
+const BackupRestore: React.FC<Props> = ({
+  history,
+  customSongs,
+  learningList,
+  praiseCollection,
+  pendingCloudSync = false,
+  syncStatus = 'local',
+  onRestore,
+  onForceSync,
+  onGuaranteeLocalSave,
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<any>(null);
   const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
+  const [isForcingSync, setIsForcingSync] = useState(false);
   const [connStatus, setConnStatus] = useState<{ loading: boolean, status: 'ok' | 'error' | 'idle', message: string }>({
     loading: false,
     status: 'idle',
@@ -111,13 +125,30 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, pr
                      <span className="material-icons text-3xl">cloud_done</span>
                    </div>
                    <div className="flex flex-col">
-                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Sincronização em Tempo Real</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Sincronização Multi-Aparelho (Mesclagem Segura)</span>
                      <span className="text-slate-900 font-black text-base uppercase leading-none">{user.email}</span>
+                     {pendingCloudSync && (
+                       <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider mt-1.5">
+                         Alterações locais aguardando envio para a nuvem
+                       </span>
+                     )}
                    </div>
                  </div>
-                 <button onClick={onForceSync} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-xl active:scale-95">
-                   <span className="material-icons text-sm">refresh</span>
-                   Forçar Sincronia
+                 <button
+                   disabled={isForcingSync}
+                   onClick={async () => {
+                     setIsForcingSync(true);
+                     try {
+                       await onForceSync();
+                       if (user?.id) await fetchLastSync(user.id);
+                     } finally {
+                       setIsForcingSync(false);
+                     }
+                   }}
+                   className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-xl active:scale-95"
+                 >
+                   <span className={`material-icons text-sm ${isForcingSync ? 'animate-spin' : ''}`}>refresh</span>
+                   {isForcingSync ? 'Sincronizando...' : 'Forçar Sincronia'}
                  </button>
                </div>
 
@@ -125,9 +156,19 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, pr
                   <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Status da Conexão</span>
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${connStatus.status === 'ok' ? 'bg-emerald-500' : connStatus.status === 'error' ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
-                      <span className={`text-[11px] font-black uppercase ${connStatus.status === 'error' ? 'text-rose-500' : 'text-slate-700'}`}>
-                        {connStatus.loading ? 'Verificando...' : connStatus.status === 'ok' ? 'Ativa' : connStatus.status === 'error' ? 'Falha' : 'Desconectado'}
+                      <div className={`w-2 h-2 rounded-full ${pendingCloudSync ? 'bg-amber-500' : connStatus.status === 'ok' ? 'bg-emerald-500' : connStatus.status === 'error' ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
+                      <span className={`text-[11px] font-black uppercase ${pendingCloudSync ? 'text-amber-600' : connStatus.status === 'error' ? 'text-rose-500' : 'text-slate-700'}`}>
+                        {isForcingSync || syncStatus === 'syncing'
+                          ? 'Sincronizando...'
+                          : pendingCloudSync
+                          ? 'Envio Pendente'
+                          : connStatus.loading
+                          ? 'Verificando...'
+                          : connStatus.status === 'ok'
+                          ? 'Ativa'
+                          : connStatus.status === 'error'
+                          ? 'Falha'
+                          : 'Desconectado'}
                       </span>
                     </div>
                   </div>
@@ -169,11 +210,14 @@ const BackupRestore: React.FC<Props> = ({ history, customSongs, learningList, pr
             </div>
 
             <button 
-              onClick={() => {
-                const data = { history, customSongs, learningList, praiseCollection };
+              onClick={async () => {
                 try {
-                  localStorage.setItem('church_service_reports_v1_local_v2', JSON.stringify(data));
-                  alert("✓ Confirmação de Segurança:\n\nTodos os seus " + history.length + " cultos e " + praiseCollection.length + " louvores estão gravados com segurança na memória interna do seu telefone.\n\nVocê NÃO precisa deixar o aplicativo aberto antes de sair de casa. Pode abrir direto na igreja sem sinal de internet!");
+                  const ok = await onGuaranteeLocalSave();
+                  if (ok) {
+                    alert("✓ Confirmação de Segurança:\n\nTodos os seus " + history.length + " cultos e " + praiseCollection.length + " louvores estão gravados com segurança na memória interna do seu telefone.\n\nVocê NÃO precisa deixar o aplicativo aberto antes de sair de casa. Pode abrir direto na igreja sem sinal de internet!");
+                  } else {
+                    alert("Aviso: verifique o espaço de armazenamento do seu navegador.");
+                  }
                 } catch (e) {
                   alert("Aviso: verifique o espaço de armazenamento do seu navegador.");
                 }

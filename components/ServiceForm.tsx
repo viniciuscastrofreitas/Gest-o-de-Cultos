@@ -282,7 +282,7 @@ const ServiceForm: React.FC<Props> = ({ onSave, songStats, fullSongList, workers
               <span className="material-icons text-3xl">check</span>
             </div>
             <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Relatório Salvo!</h3>
-            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-10">Sincronizado na nuvem.</p>
+            <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-10">Gravado neste aparelho e sincronizado com a nuvem.</p>
             <button onClick={() => setShowSuccessModal(false)} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl active:scale-95 transition-all uppercase text-xs tracking-widest">OK, CONTINUAR</button>
           </div>
         </div>

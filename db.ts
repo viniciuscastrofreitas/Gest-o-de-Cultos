@@ -107,8 +107,13 @@ export const initDB = async (): Promise<void> => {
 };
 
 export const saveData = async (data: AppData): Promise<void> => {
+  const payload: AppData = {
+    ...data,
+    localUpdatedAt: data.localUpdatedAt ?? Date.now(),
+  };
+
   // 1. Salva imediatamente no localStorage (Síncrono e ultra-rápido, sem risco de timeout)
-  saveToLocalStorage(data);
+  saveToLocalStorage(payload);
 
   // 2. Salva no IndexedDB como banco durável
   try {
@@ -117,7 +122,7 @@ export const saveData = async (data: AppData): Promise<void> => {
       try {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        store.put(data, STORAGE_KEY);
+        store.put(payload, STORAGE_KEY);
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       } catch (err) {
@@ -129,11 +134,39 @@ export const saveData = async (data: AppData): Promise<void> => {
   }
 };
 
+const pickNewerData = (localData: AppData | null, idbData: AppData | undefined): { data: AppData | null; source: 'local' | 'idb' | 'none' } => {
+  if (!localData && !idbData) return { data: null, source: 'none' };
+  if (localData && (!idbData || !Array.isArray(idbData.history))) return { data: localData, source: 'local' };
+  if (!localData && idbData) return { data: idbData, source: 'idb' };
+
+  if (localData && idbData) {
+    const localTs = localData.localUpdatedAt || 0;
+    const idbTs = idbData.localUpdatedAt || 0;
+
+    if (localTs > idbTs) {
+      return { data: localData, source: 'local' };
+    }
+    if (idbTs > localTs) {
+      return { data: idbData, source: 'idb' };
+    }
+
+    // Fallback para dados legados sem localUpdatedAt: nunca descartar registros extras do localStorage
+    const localLen = localData.history?.length || 0;
+    const idbLen = idbData.history?.length || 0;
+    if (localLen > idbLen) {
+      return { data: localData, source: 'local' };
+    }
+    return { data: idbData, source: 'idb' };
+  }
+
+  return { data: localData, source: 'local' };
+};
+
 export const loadData = async (): Promise<AppData | null> => {
   // 1. Tenta recuperar do localStorage primeiro para resposta instantânea
   const localData = getImmediateCachedData();
 
-  // 2. Tenta recuperar do IndexedDB para obter os dados mais atualizados
+  // 2. Tenta recuperar do IndexedDB e escolhe a versão mais recente (nunca sobrescreve local mais novo)
   try {
     const db = await getDB();
     return new Promise((resolve) => {
@@ -144,10 +177,20 @@ export const loadData = async (): Promise<AppData | null> => {
         
         getRequest.onsuccess = () => {
           const idbData = getRequest.result as AppData | undefined;
-          if (idbData && idbData.history) {
-            // Atualiza também o localStorage para mantê-los em perfeita sincronia
-            saveToLocalStorage(idbData);
-            resolve(idbData);
+          const chosen = pickNewerData(localData, idbData);
+
+          if (chosen.source === 'idb' && chosen.data) {
+            saveToLocalStorage(chosen.data);
+            resolve(chosen.data);
+          } else if (chosen.source === 'local' && chosen.data) {
+            // Atualiza o IndexedDB com o dado mais recente do localStorage
+            try {
+              const writeTx = db.transaction(STORE_NAME, 'readwrite');
+              writeTx.objectStore(STORE_NAME).put(chosen.data, STORAGE_KEY);
+            } catch {
+              // ignora se falhar gravação de reparo
+            }
+            resolve(chosen.data);
           } else {
             resolve(localData);
           }

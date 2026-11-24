@@ -22,6 +22,7 @@ export interface ServiceRecord {
   songs: string[];
   roles: ServiceRoles;
   attendance?: ServiceAttendance;
+  updatedAt?: string;
 }
 
 export interface ServiceDraft {
@@ -47,6 +48,13 @@ export interface PraiseLearningItem {
   updatedAt: string;
 }
 
+export interface AppMetaUpdatedAt {
+  churchName?: number;
+  customSongs?: number;
+  customWorkers?: number;
+  praiseCollection?: number;
+}
+
 export interface AppData {
   history: ServiceRecord[];
   churchName?: string;
@@ -55,4 +63,9 @@ export interface AppData {
   draft?: ServiceDraft;
   learningList?: PraiseLearningItem[];
   praiseCollection?: string[];
+  deletedIds?: string[];
+  metaUpdatedAt?: AppMetaUpdatedAt;
+  localUpdatedAt?: number;
+  lastSyncedCloudAt?: string | null;
+  pendingCloudSync?: boolean;
 }

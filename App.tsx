@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { INITIAL_PRAISE_LIST, DEFAULT_WORKERS_LIST } from './constants';
-import { ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './types';
+import { AppData, ServiceRecord, SongStats, ServiceDraft, PraiseLearningItem } from './types';
 import ServiceForm from './components/ServiceForm';
 import HistoryList from './components/HistoryList';
 import RankingList from './components/RankingList';
@@ -21,17 +21,26 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineBanner } from './components/OfflineBanner';
 import { isGroupHeaderOrMarker } from './utils/praiseCategories';
 import { parseLocalDate, toLocalDateString, normalizeServiceDescription } from './utils/dateUtils';
+import { mergeAppData, normalizeHistoryRecords } from './utils/syncMerge';
 
-const normalizeHistoryRecords = (records: ServiceRecord[]): ServiceRecord[] => {
-  return records.map(r => {
-    const cleanDate = toLocalDateString(r.date);
-    return {
-      ...r,
-      date: cleanDate,
-      description: normalizeServiceDescription(cleanDate, r.description),
-    };
+const computePersistentSignature = (data: {
+  history: ServiceRecord[];
+  churchName?: string;
+  customSongs?: string[];
+  customWorkers?: string[];
+  learningList?: PraiseLearningItem[];
+  praiseCollection?: string[];
+  deletedIds?: string[];
+}) =>
+  JSON.stringify({
+    history: data.history,
+    churchName: data.churchName || '',
+    customSongs: data.customSongs || [],
+    customWorkers: data.customWorkers || [],
+    learningList: data.learningList || [],
+    praiseCollection: data.praiseCollection || [],
+    deletedIds: data.deletedIds || [],
   });
-};
 
 const getTodayDate = () => {
   const now = new Date();
@@ -71,20 +80,28 @@ const App: React.FC = () => {
   });
   const [customWorkers, setCustomWorkers] = useState<string[]>(() => cachedInitial?.customWorkers || DEFAULT_WORKERS_LIST);
   const [learningList, setLearningList] = useState<PraiseLearningItem[]>(() => cachedInitial?.learningList || []);
-  
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => cachedInitial?.deletedIds || []);
+  const [pendingCloudSync, setPendingCloudSync] = useState<boolean>(() => Boolean(cachedInitial?.pendingCloudSync));
+
   // Se já temos registros salvos na memória do celular, o app abre IMEDIATAMENTE!
-  const [isLoading, setIsLoading] = useState(() => !cachedInitial || !cachedInitial.history);
-  const [loadingStatus, setLoadingStatus] = useState('Abrindo aplicativo...');
+  const [isLoading, setIsLoading] = useState(() => !cachedInitial || !Array.isArray(cachedInitial.history));
+  const [loadingStatus] = useState('Abrindo aplicativo...');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>('local');
-  
+
   const [hasCheckedCloud, setHasCheckedCloud] = useState(false);
-  const lastCloudUpdateRef = useRef<string | null>(null);
+  const lastCloudUpdateRef = useRef<string | null>(cachedInitial?.lastSyncedCloudAt ?? null);
   const syncTimeoutRef = useRef<number | null>(null);
+  const userRef = useRef<any>(null);
+  const isOfflineRef = useRef<boolean>(!navigator.onLine);
+  const isSyncingRef = useRef<boolean>(false);
+  const queuedSyncRef = useRef<boolean>(false);
+  const hasCheckedCloudRef = useRef<boolean>(false);
+  const applyingExternalUpdateRef = useRef<boolean>(false);
 
   const todaySpecial = useMemo(() => getSpecialServiceInfo(getTodayDate()), []);
 
@@ -108,107 +125,319 @@ const App: React.FC = () => {
     };
   });
 
-  const pullFromCloud = async (userId: string) => {
-    try {
-      setSyncStatus('syncing');
-      
-      // TIMEOUT DE PROTEÇÃO: Em locais como a igreja com sinal instável, não trava o app!
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout de rede")), 2500)
-      );
+  const latestDataRef = useRef<AppData>({
+    history: normalizeHistoryRecords(cachedInitial?.history || []),
+    churchName:
+      !cachedInitial?.churchName || cachedInitial.churchName === 'Clique aqui para nomear sua igreja'
+        ? 'Clique aqui'
+        : cachedInitial.churchName,
+    customSongs: cachedInitial?.customSongs || [],
+    customWorkers: cachedInitial?.customWorkers || DEFAULT_WORKERS_LIST,
+    draft,
+    learningList: cachedInitial?.learningList || [],
+    praiseCollection:
+      cachedInitial?.praiseCollection && cachedInitial.praiseCollection.length > 0
+        ? cachedInitial.praiseCollection
+        : [...new Set([...INITIAL_PRAISE_LIST, ...(cachedInitial?.customSongs || [])])].sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true })
+          ),
+    deletedIds: cachedInitial?.deletedIds || [],
+    metaUpdatedAt: cachedInitial?.metaUpdatedAt || {},
+    localUpdatedAt: cachedInitial?.localUpdatedAt || Date.now(),
+    lastSyncedCloudAt: cachedInitial?.lastSyncedCloudAt ?? null,
+    pendingCloudSync: Boolean(cachedInitial?.pendingCloudSync),
+  });
 
-      const queryPromise = supabase
-        .from('user_data')
-        .select('json_data, updated_at')
-        .eq('user_id', userId)
-        .maybeSingle();
+  const lastLocalCloudSignatureRef = useRef<string>(computePersistentSignature(latestDataRef.current));
+  const lastWakeSyncAtRef = useRef<number>(0);
 
-      const { data, error }: any = await Promise.race([queryPromise, timeoutPromise]);
-
-      if (error) throw error;
-      
-      if (data && data.json_data) {
-        const cloudTimestamp = data.updated_at;
-        if (!lastCloudUpdateRef.current || new Date(cloudTimestamp) > new Date(lastCloudUpdateRef.current)) {
-          lastCloudUpdateRef.current = cloudTimestamp;
-          const remote = data.json_data;
-          const normalizedRemoteHistory = remote.history ? normalizeHistoryRecords(remote.history) : undefined;
-          if (normalizedRemoteHistory) setHistory(normalizedRemoteHistory);
-          if (remote.churchName) {
-            setChurchName(remote.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : remote.churchName);
-          }
-          if (remote.customSongs) setCustomSongs(remote.customSongs);
-          if (remote.customWorkers) setCustomWorkers(remote.customWorkers);
-          if (remote.learningList) setLearningList(remote.learningList);
-          if (remote.praiseCollection) setPraiseCollection(remote.praiseCollection);
-
-          // Salva imediatamente no armazenamento local do aparelho
-          saveData(normalizedRemoteHistory ? { ...remote, history: normalizedRemoteHistory } : remote);
-        }
-      }
-      setSyncStatus('synced');
-    } catch (e) {
-      console.warn("Sem conexão com a nuvem no momento. Usando dados salvos localmente.", e);
+  const syncWithCloud = useCallback(async (): Promise<boolean> => {
+    const currentUser = userRef.current;
+    if (!currentUser || isOfflineRef.current) {
       setSyncStatus('local');
+      return false;
     }
-  };
 
-  const pushToCloud = async () => {
-    if (!user || isOffline) return;
+    if (isSyncingRef.current) {
+      queuedSyncRef.current = true;
+      return false;
+    }
+
+    isSyncingRef.current = true;
     setSyncStatus('syncing');
+
     try {
-      const timestamp = new Date().toISOString();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout de rede")), 3500)
-      );
+      const MAX_CONCURRENCY_RETRIES = 3;
 
-      const upsertPromise = supabase.from('user_data').upsert({ 
-        user_id: user.id, 
-        json_data: { history, churchName, customSongs, customWorkers, learningList, praiseCollection },
-        updated_at: timestamp
-      }, { onConflict: 'user_id' });
+      for (let attempt = 0; attempt < MAX_CONCURRENCY_RETRIES; attempt++) {
+        const pullTimeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao consultar nuvem')), 8000)
+        );
 
-      const { error }: any = await Promise.race([upsertPromise, timeoutPromise]);
-      
-      if (error) throw error;
-      lastCloudUpdateRef.current = timestamp;
-      setSyncStatus('synced');
+        const queryPromise = supabase
+          .from('user_data')
+          .select('json_data, updated_at')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+
+        const { data, error }: any = await Promise.race([queryPromise, pullTimeoutPromise]);
+        if (error) throw error;
+
+        // Lê sempre o snapshot local mais recente (inclusive edições feitas durante a consulta)
+        const freshLocal: AppData = { ...latestDataRef.current };
+        const remoteJson = data?.json_data || null;
+        const remoteUpdatedAt: string | null = data?.updated_at || null;
+
+        const mergeResult = mergeAppData(freshLocal, remoteJson, remoteUpdatedAt);
+
+        if (mergeResult.changedFromLocal) {
+          applyingExternalUpdateRef.current = true;
+          latestDataRef.current = mergeResult.merged;
+          lastLocalCloudSignatureRef.current = computePersistentSignature(mergeResult.merged);
+
+          setHistory(mergeResult.merged.history);
+          if (mergeResult.merged.churchName) setChurchName(mergeResult.merged.churchName);
+          setCustomSongs(mergeResult.merged.customSongs || []);
+          setCustomWorkers(mergeResult.merged.customWorkers || DEFAULT_WORKERS_LIST);
+          setLearningList(mergeResult.merged.learningList || []);
+          setPraiseCollection(mergeResult.merged.praiseCollection || []);
+          setDeletedIds(mergeResult.merged.deletedIds || []);
+
+          await saveData(mergeResult.merged);
+        }
+
+        if (!mergeResult.shouldPushToCloud) {
+          if (remoteUpdatedAt) {
+            lastCloudUpdateRef.current = remoteUpdatedAt;
+          }
+          if (latestDataRef.current.pendingCloudSync) {
+            latestDataRef.current = {
+              ...latestDataRef.current,
+              lastSyncedCloudAt: remoteUpdatedAt ?? latestDataRef.current.lastSyncedCloudAt ?? null,
+              pendingCloudSync: false,
+            };
+            setPendingCloudSync(false);
+            await saveData(latestDataRef.current);
+          }
+          setSyncStatus('synced');
+          break;
+        }
+
+        const pushTimestamp = new Date().toISOString();
+        const pushMutationTs = mergeResult.merged.localUpdatedAt;
+        const pushPayload = {
+          history: mergeResult.merged.history,
+          churchName: mergeResult.merged.churchName,
+          customSongs: mergeResult.merged.customSongs,
+          customWorkers: mergeResult.merged.customWorkers,
+          learningList: mergeResult.merged.learningList,
+          praiseCollection: mergeResult.merged.praiseCollection,
+          deletedIds: mergeResult.merged.deletedIds || [],
+          metaUpdatedAt: mergeResult.merged.metaUpdatedAt || {},
+        };
+
+        const pushTimeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao enviar para nuvem')), 12000)
+        );
+
+        let writeSucceeded = false;
+
+        if (remoteUpdatedAt) {
+          // Controle de concorrência otimista: só atualiza se nenhum outro aparelho alterou a nuvem no meio tempo
+          const updatePromise = supabase
+            .from('user_data')
+            .update({ json_data: pushPayload, updated_at: pushTimestamp })
+            .eq('user_id', currentUser.id)
+            .eq('updated_at', remoteUpdatedAt)
+            .select('updated_at');
+
+          const { data: updatedRows, error: pushError }: any = await Promise.race([updatePromise, pushTimeoutPromise]);
+          if (pushError) throw pushError;
+
+          if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+            writeSucceeded = true;
+            lastCloudUpdateRef.current = updatedRows[0]?.updated_at || pushTimestamp;
+          } else if (attempt === MAX_CONCURRENCY_RETRIES - 1) {
+            // Fallback seguro na última tentativa após re-mesclagem
+            const upsertPromise = supabase
+              .from('user_data')
+              .upsert(
+                { user_id: currentUser.id, json_data: pushPayload, updated_at: pushTimestamp },
+                { onConflict: 'user_id' }
+              );
+            const { error: upsertErr }: any = await Promise.race([upsertPromise, pushTimeoutPromise]);
+            if (upsertErr) throw upsertErr;
+            writeSucceeded = true;
+            lastCloudUpdateRef.current = pushTimestamp;
+          }
+        } else {
+          // Primeira gravação da conta na nuvem
+          const insertPromise = supabase
+            .from('user_data')
+            .insert({ user_id: currentUser.id, json_data: pushPayload, updated_at: pushTimestamp });
+
+          const { error: insertError }: any = await Promise.race([insertPromise, pushTimeoutPromise]);
+          if (!insertError) {
+            writeSucceeded = true;
+            lastCloudUpdateRef.current = pushTimestamp;
+          } else if (insertError.code === '23505') {
+            // Outro aparelho criou a linha exatamente no mesmo instante -> re-buscar e mesclar
+            writeSucceeded = false;
+          } else {
+            throw insertError;
+          }
+        }
+
+        if (writeSucceeded) {
+          if (latestDataRef.current.localUpdatedAt === pushMutationTs) {
+            latestDataRef.current = {
+              ...latestDataRef.current,
+              lastSyncedCloudAt: lastCloudUpdateRef.current,
+              pendingCloudSync: false,
+            };
+            setPendingCloudSync(false);
+            await saveData(latestDataRef.current);
+            setSyncStatus('synced');
+          } else {
+            queuedSyncRef.current = true;
+          }
+          break;
+        }
+
+        // Outro aparelho atualizou a nuvem durante o envio: aguarda brevemente e refaz pull + merge
+        await new Promise((r) => setTimeout(r, 250));
+      }
+
+      hasCheckedCloudRef.current = true;
+      lastWakeSyncAtRef.current = Date.now();
+      setHasCheckedCloud(true);
+      return true;
     } catch (e) {
-      console.warn("Erro ao enviar dados para nuvem, mantendo local:", e);
-      setSyncStatus('error');
+      console.warn('Sem conexão estável com a nuvem no momento. Dados preservados localmente.', e);
+      setSyncStatus(latestDataRef.current.pendingCloudSync ? 'error' : 'local');
+      return false;
+    } finally {
+      isSyncingRef.current = false;
+      if (queuedSyncRef.current && userRef.current && !isOfflineRef.current) {
+        queuedSyncRef.current = false;
+        void syncWithCloud();
+      }
     }
-  };
+  }, []);
+
+  const commitPersistentMutation = useCallback(
+    (nextPartial: Partial<AppData>, immediateSync = true) => {
+      const nextSnapshot: AppData = {
+        ...latestDataRef.current,
+        ...nextPartial,
+        localUpdatedAt: Date.now(),
+        pendingCloudSync: true,
+      };
+      latestDataRef.current = nextSnapshot;
+      lastLocalCloudSignatureRef.current = computePersistentSignature(nextSnapshot);
+      setPendingCloudSync(true);
+
+      // Grava imediatamente no localStorage (síncrono) e no IndexedDB
+      void saveData(nextSnapshot);
+
+      if (syncTimeoutRef.current) {
+        window.clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+      }
+
+      if (immediateSync && userRef.current && !isOfflineRef.current) {
+        void syncWithCloud();
+      } else if (!userRef.current || isOfflineRef.current) {
+        setSyncStatus('local');
+      }
+    },
+    [syncWithCloud]
+  );
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      isOfflineRef.current = false;
+      setIsOffline(false);
+      if (userRef.current && (latestDataRef.current.pendingCloudSync || !hasCheckedCloudRef.current)) {
+        void syncWithCloud();
+      }
+    };
     const handleOffline = () => {
+      isOfflineRef.current = true;
       setIsOffline(true);
       setSyncStatus('local');
     };
+    const handleFlushBeforeHide = () => {
+      // Garante persistência local síncrona ao minimizar/fechar o app no celular
+      latestDataRef.current = {
+        ...latestDataRef.current,
+        localUpdatedAt: Date.now(),
+      };
+      void saveData(latestDataRef.current);
+
+      if (syncTimeoutRef.current) {
+        window.clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+        if (userRef.current && !isOfflineRef.current) {
+          void syncWithCloud();
+        }
+      } else if (latestDataRef.current.pendingCloudSync && userRef.current && !isOfflineRef.current) {
+        void syncWithCloud();
+      }
+    };
+    const handleWakeSync = () => {
+      if (!userRef.current || isOfflineRef.current) return;
+      const now = Date.now();
+      if (now - lastWakeSyncAtRef.current < 4000) return;
+      lastWakeSyncAtRef.current = now;
+      void syncWithCloud();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleFlushBeforeHide();
+      } else if (document.visibilityState === 'visible') {
+        handleWakeSync();
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('pagehide', handleFlushBeforeHide);
+    window.addEventListener('focus', handleWakeSync);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Recupera sessão com segurança sem quebrar se o token estiver expirado
-    supabase.auth.getSession().then((res) => {
-      if (res.error) {
-        if (res.error.message?.includes('Refresh Token') || res.error.message?.includes('refresh_token')) {
+    supabase.auth
+      .getSession()
+      .then((res) => {
+        if (res.error) {
+          if (res.error.message?.includes('Refresh Token') || res.error.message?.includes('refresh_token')) {
+            supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          }
+          userRef.current = null;
+          setUser(null);
+          return;
+        }
+        const sessionUser = res.data?.session?.user ?? null;
+        userRef.current = sessionUser;
+        setUser(sessionUser);
+      })
+      .catch((err) => {
+        if (err?.message?.includes('Refresh Token')) {
           supabase.auth.signOut({ scope: 'local' }).catch(() => {});
         }
+        userRef.current = null;
         setUser(null);
-        return;
-      }
-      setUser(res.data?.session?.user ?? null);
-    }).catch((err) => {
-      if (err?.message?.includes('Refresh Token')) {
-        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-      }
-      setUser(null);
-    });
+      });
 
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription: authSub },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       const newUser = session?.user ?? null;
+      userRef.current = newUser;
       setUser(newUser);
       if (!newUser) {
+        hasCheckedCloudRef.current = false;
         setHasCheckedCloud(false);
         setSyncStatus('local');
         lastCloudUpdateRef.current = null;
@@ -221,29 +450,71 @@ const App: React.FC = () => {
       try {
         await initDB();
         const data = await loadData();
-        
+
         if (data) {
-          if (data.history && data.history.length > 0) setHistory(normalizeHistoryRecords(data.history));
-          if (data.churchName) {
-            setChurchName(data.churchName === 'Clique aqui para nomear sua igreja' ? 'Clique aqui' : data.churchName);
-          }
-          if (data.customSongs) setCustomSongs(data.customSongs);
-          if (data.customWorkers) setCustomWorkers(data.customWorkers);
-          if (data.learningList) setLearningList(data.learningList);
-          if (data.praiseCollection && data.praiseCollection.length > 0) {
-            setPraiseCollection(data.praiseCollection);
-          }
-          if (data.draft) {
+          const loadedTs = data.localUpdatedAt || 0;
+          const currentTs = latestDataRef.current.localUpdatedAt || 0;
+
+          // Só aplica dados do IndexedDB se não forem mais antigos que edições já feitas nesta sessão
+          if (!cachedInitial || loadedTs >= currentTs) {
+            applyingExternalUpdateRef.current = true;
+            const normalizedHistory = Array.isArray(data.history)
+              ? normalizeHistoryRecords(data.history)
+              : latestDataRef.current.history;
+            const normalizedChurch =
+              !data.churchName || data.churchName === 'Clique aqui para nomear sua igreja'
+                ? 'Clique aqui'
+                : data.churchName;
+            const loadedCustomSongs = data.customSongs ?? latestDataRef.current.customSongs;
+            const loadedWorkers = data.customWorkers ?? latestDataRef.current.customWorkers;
+            const loadedLearning = data.learningList ?? latestDataRef.current.learningList;
+            const loadedCollection =
+              data.praiseCollection && data.praiseCollection.length > 0
+                ? data.praiseCollection
+                : latestDataRef.current.praiseCollection;
+            const loadedDeletedIds = data.deletedIds ?? latestDataRef.current.deletedIds ?? [];
+            const loadedPending = Boolean(data.pendingCloudSync);
+            const loadedLastSynced = data.lastSyncedCloudAt ?? lastCloudUpdateRef.current;
+
             const today = getTodayDate();
-            setDraft({
-              ...data.draft,
-              date: today,
-              description: normalizeServiceDescription(today, data.draft.description),
-            });
+            const normalizedDraft = data.draft
+              ? {
+                  ...data.draft,
+                  date: today,
+                  description: normalizeServiceDescription(today, data.draft.description),
+                }
+              : latestDataRef.current.draft;
+
+            latestDataRef.current = {
+              history: normalizedHistory,
+              churchName: normalizedChurch,
+              customSongs: loadedCustomSongs,
+              customWorkers: loadedWorkers,
+              draft: normalizedDraft,
+              learningList: loadedLearning,
+              praiseCollection: loadedCollection,
+              deletedIds: loadedDeletedIds,
+              metaUpdatedAt: data.metaUpdatedAt ?? latestDataRef.current.metaUpdatedAt ?? {},
+              localUpdatedAt: data.localUpdatedAt || currentTs || Date.now(),
+              lastSyncedCloudAt: loadedLastSynced,
+              pendingCloudSync: loadedPending,
+            };
+            lastLocalCloudSignatureRef.current = computePersistentSignature(latestDataRef.current);
+            if (loadedLastSynced) lastCloudUpdateRef.current = loadedLastSynced;
+
+            setHistory(normalizedHistory);
+            setChurchName(normalizedChurch);
+            if (loadedCustomSongs) setCustomSongs(loadedCustomSongs);
+            if (loadedWorkers) setCustomWorkers(loadedWorkers);
+            if (loadedLearning) setLearningList(loadedLearning);
+            if (loadedCollection) setPraiseCollection(loadedCollection);
+            setDeletedIds(loadedDeletedIds);
+            setPendingCloudSync(loadedPending);
+            if (normalizedDraft) setDraft(normalizedDraft);
           }
         }
       } catch (e) {
-        console.warn("Aviso ao carregar DB local:", e);
+        console.warn('Aviso ao carregar DB local:', e);
       } finally {
         setIsLoading(false);
       }
@@ -253,50 +524,126 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('pagehide', handleFlushBeforeHide);
+      window.removeEventListener('focus', handleWakeSync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       authSub.unsubscribe();
     };
-  }, []);
+  }, [syncWithCloud]);
 
   useEffect(() => {
     if (!user) return;
     const channel = supabase
       .channel(`db-sync-${user.id}`)
-      .on('postgres_changes', 
-        { event: 'UPDATE', schema: 'public', table: 'user_data', filter: `user_id=eq.${user.id}` },
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_data', filter: `user_id=eq.${user.id}` },
         (payload: any) => {
           if (payload.new && payload.new.updated_at !== lastCloudUpdateRef.current) {
-            pullFromCloud(user.id);
+            void syncWithCloud();
           }
         }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
+
+    // Sincronização periódica silenciosa (45s) enquanto aberto para garantir atualização entre múltiplos celulares
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && !isOfflineRef.current) {
+        void syncWithCloud();
+      }
+    }, 45000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      supabase.removeChannel(channel);
+    };
+  }, [user, syncWithCloud]);
 
   useEffect(() => {
-    if (user && !isLoading && !hasCheckedCloud) {
-      pullFromCloud(user.id).then(() => setHasCheckedCloud(true));
+    if (user && !isLoading && !hasCheckedCloud && !isOffline) {
+      void syncWithCloud();
     }
-  }, [user, isLoading, hasCheckedCloud]);
+  }, [user, isLoading, hasCheckedCloud, isOffline, syncWithCloud]);
 
+  // Efeito dedicado APENAS ao rascunho em preenchimento (não dispara upload na nuvem a cada tecla)
   useEffect(() => {
     if (isLoading) return;
-    saveData({ history, churchName, customSongs, customWorkers, draft, learningList, praiseCollection });
-    if (user && !isOffline && hasCheckedCloud) {
+    latestDataRef.current = {
+      ...latestDataRef.current,
+      draft,
+      localUpdatedAt: Date.now(),
+    };
+    void saveData(latestDataRef.current);
+  }, [draft, isLoading]);
+
+  // Efeito secundário para mudanças vindas de setters diretos (ex.: nome da igreja, aprendizado, obreiros, coletânea)
+  useEffect(() => {
+    if (isLoading) return;
+
+    const prevSnapshot = latestDataRef.current;
+    const nowMs = Date.now();
+    const nextMetaUpdatedAt = { ...(prevSnapshot.metaUpdatedAt || {}) };
+
+    if (!applyingExternalUpdateRef.current) {
+      if (prevSnapshot.churchName !== churchName) nextMetaUpdatedAt.churchName = nowMs;
+      if (JSON.stringify(prevSnapshot.customSongs || []) !== JSON.stringify(customSongs)) {
+        nextMetaUpdatedAt.customSongs = nowMs;
+      }
+      if (JSON.stringify(prevSnapshot.customWorkers || []) !== JSON.stringify(customWorkers)) {
+        nextMetaUpdatedAt.customWorkers = nowMs;
+      }
+      if (JSON.stringify(prevSnapshot.praiseCollection || []) !== JSON.stringify(praiseCollection)) {
+        nextMetaUpdatedAt.praiseCollection = nowMs;
+      }
+    }
+
+    const currentSnapshot: AppData = {
+      ...prevSnapshot,
+      history,
+      churchName,
+      customSongs,
+      customWorkers,
+      learningList,
+      praiseCollection,
+      deletedIds,
+      metaUpdatedAt: nextMetaUpdatedAt,
+    };
+
+    const sig = computePersistentSignature(currentSnapshot);
+    latestDataRef.current = currentSnapshot;
+
+    if (sig === lastLocalCloudSignatureRef.current) {
+      applyingExternalUpdateRef.current = false;
+      return;
+    }
+
+    lastLocalCloudSignatureRef.current = sig;
+
+    if (applyingExternalUpdateRef.current) {
+      applyingExternalUpdateRef.current = false;
+      return;
+    }
+
+    const updatedSnapshot: AppData = {
+      ...currentSnapshot,
+      localUpdatedAt: nowMs,
+      pendingCloudSync: true,
+    };
+    latestDataRef.current = updatedSnapshot;
+    setPendingCloudSync(true);
+    void saveData(updatedSnapshot);
+
+    if (userRef.current && !isOfflineRef.current) {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       setSyncStatus('syncing');
-      syncTimeoutRef.current = window.setTimeout(async () => {
-        const { data: remoteInfo } = await supabase.from('user_data').select('updated_at').eq('user_id', user.id).maybeSingle();
-        if (remoteInfo && lastCloudUpdateRef.current && new Date(remoteInfo.updated_at) > new Date(lastCloudUpdateRef.current)) {
-          await pullFromCloud(user.id);
-        } else {
-          await pushToCloud();
-        }
-      }, 2000);
-    } else if (!user) {
+      syncTimeoutRef.current = window.setTimeout(() => {
+        syncTimeoutRef.current = null;
+        void syncWithCloud();
+      }, 1000);
+    } else {
       setSyncStatus('local');
     }
-  }, [history, churchName, customSongs, customWorkers, draft, learningList, praiseCollection, user, isOffline, isLoading, hasCheckedCloud]);
+  }, [history, churchName, customSongs, customWorkers, learningList, praiseCollection, deletedIds, isLoading, syncWithCloud]);
 
   const fullSongList = useMemo(() => {
     if (praiseCollection && praiseCollection.length > 0) return praiseCollection;
@@ -304,10 +651,17 @@ const App: React.FC = () => {
   }, [customSongs, praiseCollection]);
 
   const onRenameSongInHistory = (oldName: string, newName: string) => {
-    setHistory(prev => prev.map(record => ({
-      ...record,
-      songs: record.songs.map(s => s === oldName ? newName : s)
-    })));
+    const nowIso = new Date().toISOString();
+    const nextHistory = latestDataRef.current.history.map((record) => {
+      if (!record.songs.includes(oldName)) return record;
+      return {
+        ...record,
+        songs: record.songs.map((s) => (s === oldName ? newName : s)),
+        updatedAt: nowIso,
+      };
+    });
+    setHistory(nextHistory);
+    commitPersistentMutation({ history: nextHistory }, true);
   };
 
   const songStats = useMemo(() => {
@@ -329,25 +683,144 @@ const App: React.FC = () => {
 
   const saveRecord = (data: Omit<ServiceRecord, 'id'>) => {
     const cleanDate = toLocalDateString(data.date);
+    const nowIso = new Date().toISOString();
     const normalizedRecord: Omit<ServiceRecord, 'id'> = {
       ...data,
       date: cleanDate,
       description: normalizeServiceDescription(cleanDate, data.description),
+      updatedAt: nowIso,
     };
+
+    let nextHistory: ServiceRecord[];
+    let nextDeletedIds = latestDataRef.current.deletedIds || [];
+
     if (editingId) {
-      setHistory(prev => prev.map(r => r.id === editingId ? { ...normalizedRecord, id: editingId } : r));
+      nextHistory = latestDataRef.current.history.map((r) =>
+        r.id === editingId ? { ...normalizedRecord, id: editingId } : r
+      );
       setEditingId(null);
     } else {
-      setHistory(prev => [{ ...normalizedRecord, id: crypto.randomUUID() }, ...prev]);
+      const newId = crypto.randomUUID();
+      nextHistory = [{ ...normalizedRecord, id: newId }, ...latestDataRef.current.history];
+      if (nextDeletedIds.includes(newId)) {
+        nextDeletedIds = nextDeletedIds.filter((d) => d !== newId);
+      }
     }
+
     const today = getTodayDate();
-    setDraft({
+    const freshDraft: ServiceDraft = {
       date: today,
       description: normalizeServiceDescription(today, ''),
       songs: [],
       roles: { ...emptyRoles },
-      attendance: {}
+      attendance: {},
+    };
+
+    setHistory(nextHistory);
+    setDeletedIds(nextDeletedIds);
+    setDraft(freshDraft);
+
+    // Salva imediatamente no aparelho e inicia envio imediato para a nuvem (sem esperar debounce de 2s)
+    commitPersistentMutation(
+      {
+        history: nextHistory,
+        deletedIds: nextDeletedIds,
+        draft: freshDraft,
+      },
+      true
+    );
+  };
+
+  const handleDeleteRecord = (id: string) => {
+    const nextHistory = latestDataRef.current.history.filter((r) => r.id !== id);
+    const nextDeletedIds = [id, ...(latestDataRef.current.deletedIds || []).filter((d) => d !== id)].slice(0, 300);
+    setHistory(nextHistory);
+    setDeletedIds(nextDeletedIds);
+    commitPersistentMutation(
+      {
+        history: nextHistory,
+        deletedIds: nextDeletedIds,
+      },
+      true
+    );
+  };
+
+  const handleUpdateHistory = (newHistory: ServiceRecord[]) => {
+    const nowIso = new Date().toISOString();
+    const prevMap = new Map<string, ServiceRecord>(
+      latestDataRef.current.history.map((r): [string, ServiceRecord] => [r.id, r])
+    );
+    const normalized = normalizeHistoryRecords(newHistory).map((r) => {
+      const prev = prevMap.get(r.id);
+      const changed =
+        !prev ||
+        prev.date !== r.date ||
+        prev.description !== r.description ||
+        JSON.stringify(prev.attendance || {}) !== JSON.stringify(r.attendance || {}) ||
+        JSON.stringify(prev.songs) !== JSON.stringify(r.songs) ||
+        JSON.stringify(prev.roles) !== JSON.stringify(r.roles);
+      return changed ? { ...r, updatedAt: nowIso } : r;
     });
+    setHistory(normalized);
+    commitPersistentMutation({ history: normalized }, true);
+  };
+
+  const handleRestoreBackup = (
+    restoredHistory: ServiceRecord[],
+    restoredCustomSongs: string[],
+    restoredLearningList: PraiseLearningItem[],
+    restoredPraiseCollection: string[]
+  ) => {
+    const nowIso = new Date().toISOString();
+    const normalized = normalizeHistoryRecords(restoredHistory).map((r) => ({
+      ...r,
+      updatedAt: nowIso,
+    }));
+    const restoredIds = new Set(normalized.map((r) => r.id));
+    const removedIds = latestDataRef.current.history.filter((r) => !restoredIds.has(r.id)).map((r) => r.id);
+    const nextDeletedIds = Array.from(
+      new Set([
+        ...removedIds,
+        ...(latestDataRef.current.deletedIds || []).filter((d) => !restoredIds.has(d)),
+      ])
+    ).slice(0, 300);
+
+    setHistory(normalized);
+    setCustomSongs(restoredCustomSongs);
+    setLearningList(restoredLearningList || []);
+    setPraiseCollection(restoredPraiseCollection || []);
+    setDeletedIds(nextDeletedIds);
+
+    const nowMs = Date.now();
+    commitPersistentMutation(
+      {
+        history: normalized,
+        customSongs: restoredCustomSongs,
+        learningList: restoredLearningList || [],
+        praiseCollection: restoredPraiseCollection || [],
+        deletedIds: nextDeletedIds,
+        metaUpdatedAt: {
+          ...(latestDataRef.current.metaUpdatedAt || {}),
+          customSongs: nowMs,
+          praiseCollection: nowMs,
+        },
+      },
+      true
+    );
+  };
+
+  const handleGuaranteeLocalSave = async (): Promise<boolean> => {
+    try {
+      const snapshot: AppData = {
+        ...latestDataRef.current,
+        localUpdatedAt: Date.now(),
+      };
+      latestDataRef.current = snapshot;
+      await saveData(snapshot);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const handleRegisterGap = (date: string, type: 'missing_service' | 'missing_ebd' | 'missing_dom') => {
@@ -391,9 +864,37 @@ const App: React.FC = () => {
 
   const AppBrand = () => {
     const isLocalSafe = syncStatus === 'local' || isOffline;
-    const statusIcon = syncStatus === 'synced' ? 'cloud_done' : syncStatus === 'syncing' ? 'sync' : isLocalSafe ? 'verified' : 'cloud_off';
-    const statusColor = syncStatus === 'synced' ? 'text-emerald-400' : syncStatus === 'syncing' ? 'text-amber-400 animate-spin' : isLocalSafe ? 'text-emerald-400' : 'text-rose-500';
-    const statusText = syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'syncing' ? 'Sincronizando...' : isLocalSafe ? '100% Salvo no Aparelho' : 'Erro Conexão';
+    const hasPendingUpload = Boolean(user && pendingCloudSync && syncStatus !== 'syncing');
+    const statusIcon =
+      syncStatus === 'syncing'
+        ? 'sync'
+        : hasPendingUpload
+        ? 'cloud_upload'
+        : syncStatus === 'synced'
+        ? 'cloud_done'
+        : isLocalSafe
+        ? 'verified'
+        : 'cloud_off';
+    const statusColor =
+      syncStatus === 'syncing'
+        ? 'text-amber-400 animate-spin'
+        : hasPendingUpload
+        ? 'text-amber-400'
+        : syncStatus === 'synced'
+        ? 'text-emerald-400'
+        : isLocalSafe
+        ? 'text-emerald-400'
+        : 'text-rose-500';
+    const statusText =
+      syncStatus === 'syncing'
+        ? 'Sincronizando...'
+        : hasPendingUpload
+        ? 'Salvo Local • Envio Pendente'
+        : syncStatus === 'synced'
+        ? 'Nuvem Conectada'
+        : isLocalSafe
+        ? '100% Salvo no Aparelho'
+        : 'Erro Conexão';
 
     return (
       <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
@@ -592,11 +1093,11 @@ const App: React.FC = () => {
         <OfflineBanner />
         <div className="px-4 py-10 md:p-16 animate-fadeIn max-w-4xl mx-auto">
           {activeTab === 'new' && <ServiceForm onSave={saveRecord} songStats={songStats} fullSongList={fullSongList} workers={customWorkers} onRegisterNewSong={s => { if (isGroupHeaderOrMarker(s)) return; setCustomSongs(prev => [...prev, s]); setPraiseCollection(prev => [...new Set([...prev, s])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))); }} draft={draft} setDraft={setDraft} editingId={editingId} onCancelEdit={() => setEditingId(null)} />}
-          {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={id => setHistory(prev => prev.filter(r => r.id !== id))} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}
+          {activeTab === 'history' && <HistoryList history={history} workers={customWorkers} fullSongList={fullSongList} onDelete={handleDeleteRecord} onEdit={r => { setEditingId(r.id); setDraft({ ...r }); setActiveTab('new'); }} onClearAll={() => {}} onRegisterGap={handleRegisterGap} />}
           {activeTab === 'attendance' && (
             <AttendanceAnalytics
               history={history}
-              onUpdateHistory={newH => setHistory(newH)}
+              onUpdateHistory={handleUpdateHistory}
               onSelectRecordForEdit={r => {
                 setEditingId(r.id);
                 setDraft({ ...r });
@@ -627,7 +1128,19 @@ const App: React.FC = () => {
           {activeTab === 'praise-ranking' && <RankingList songStats={songStats} fullSongList={fullSongList} />}
           {activeTab === 'repetition' && <RepetitionChart history={history} songStats={songStats} fullSongList={fullSongList} churchName={churchName} />}
           {activeTab === 'unplayed' && <UnplayedList fullSongList={fullSongList} history={history} />}
-          {activeTab === 'settings' && <BackupRestore history={history} customSongs={customSongs} learningList={learningList} praiseCollection={praiseCollection} onRestore={(h, c, l, p) => { setHistory(normalizeHistoryRecords(h)); setCustomSongs(c); setLearningList(l || []); setPraiseCollection(p || []); }} onForceSync={() => user && pullFromCloud(user.id)} />}
+          {activeTab === 'settings' && (
+            <BackupRestore
+              history={history}
+              customSongs={customSongs}
+              learningList={learningList}
+              praiseCollection={praiseCollection}
+              pendingCloudSync={pendingCloudSync}
+              syncStatus={syncStatus}
+              onRestore={handleRestoreBackup}
+              onForceSync={() => syncWithCloud()}
+              onGuaranteeLocalSave={handleGuaranteeLocalSave}
+            />
+          )}
         </div>
       </main>
     </div>
